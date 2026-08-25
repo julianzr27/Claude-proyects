@@ -1,0 +1,794 @@
+{
+  "directed": false,
+  "multigraph": false,
+  "graph": {
+    "hyperedges": [
+      {
+        "id": "installed_skills_set",
+        "label": "Skills Installed in .claude/skills",
+        "nodes": [
+          "_claude_skills_find_skills_skill_find_skills",
+          "_claude_skills_git_push_skill_git_push",
+          "_claude_skills_graphify_skill_graphify"
+        ],
+        "relation": "participate_in",
+        "confidence": "EXTRACTED",
+        "confidence_score": 1.0,
+        "source_file": "Skills.md"
+      },
+      {
+        "id": "graphify_reference_docs_set",
+        "label": "graphify Reference Documentation Set",
+        "nodes": [
+          "_claude_skills_graphify_references_add_watch_add_watch",
+          "_claude_skills_graphify_references_exports_exports",
+          "_claude_skills_graphify_references_extraction_spec_extraction_spec",
+          "_claude_skills_graphify_references_github_and_merge_github_and_merge",
+          "_claude_skills_graphify_references_hooks_hooks",
+          "_claude_skills_graphify_references_query_query",
+          "_claude_skills_graphify_references_transcribe_transcribe",
+          "_claude_skills_graphify_references_update_update"
+        ],
+        "relation": "participate_in",
+        "confidence": "EXTRACTED",
+        "confidence_score": 1.0,
+        "source_file": ".claude/skills/graphify/SKILL.md"
+      },
+      {
+        "id": "julian_identity_context_set",
+        "label": "Juli\u00e1n Identity & Writing-Voice Context",
+        "nodes": [
+          "julian_profile",
+          "vozjulian_style_guide",
+          "voz_julian_package"
+        ],
+        "relation": "form",
+        "confidence": "INFERRED",
+        "confidence_score": 0.75,
+        "source_file": "Skills.md"
+      }
+    ]
+  },
+  "nodes": [
+    {
+      "label": "find-skills Skill (agents source)",
+      "file_type": "document",
+      "source_file": ".agents/skills/find-skills/SKILL.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_agents_skills_find_skills_skill_find_skills",
+      "community": 2,
+      "norm_label": "find-skills skill (agents source)"
+    },
+    {
+      "label": "find-skills Skill (installed)",
+      "file_type": "document",
+      "source_file": ".claude/skills/find-skills/SKILL.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_claude_skills_find_skills_skill_find_skills",
+      "community": 2,
+      "norm_label": "find-skills skill (installed)"
+    },
+    {
+      "label": "Skills CLI (npx skills)",
+      "file_type": "concept",
+      "source_file": ".agents/skills/find-skills/SKILL.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_agents_skills_find_skills_skill_skills_cli",
+      "community": 2,
+      "norm_label": "skills cli (npx skills)"
+    },
+    {
+      "label": "skills.sh Leaderboard",
+      "file_type": "concept",
+      "source_file": ".agents/skills/find-skills/SKILL.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_agents_skills_find_skills_skill_skills_sh_leaderboard",
+      "community": 2,
+      "norm_label": "skills.sh leaderboard"
+    },
+    {
+      "label": "git-push Skill (installed)",
+      "file_type": "document",
+      "source_file": ".claude/skills/git-push/SKILL.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_claude_skills_git_push_skill_git_push",
+      "community": 0,
+      "norm_label": "git-push skill (installed)"
+    },
+    {
+      "label": "git-push Skill (source copy)",
+      "file_type": "document",
+      "source_file": "git-push/SKILL.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "git_push_skill_git_push",
+      "community": 0,
+      "norm_label": "git-push skill (source copy)"
+    },
+    {
+      "label": "graphify Skill (main)",
+      "file_type": "document",
+      "source_file": ".claude/skills/graphify/SKILL.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_claude_skills_graphify_skill_graphify",
+      "community": 1,
+      "norm_label": "graphify skill (main)"
+    },
+    {
+      "label": "graphifyy PyPI Package",
+      "file_type": "concept",
+      "source_file": ".claude/skills/graphify/SKILL.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_claude_skills_graphify_skill_graphifyy_package",
+      "community": 2,
+      "norm_label": "graphifyy pypi package"
+    },
+    {
+      "label": "Add URL & Watch Mode (reference)",
+      "file_type": "document",
+      "source_file": ".claude/skills/graphify/references/add-watch.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_claude_skills_graphify_references_add_watch_add_watch",
+      "community": 1,
+      "norm_label": "add url & watch mode (reference)"
+    },
+    {
+      "label": "Exports (Neo4j/FalkorDB/SVG/GraphML/MCP) reference",
+      "file_type": "document",
+      "source_file": ".claude/skills/graphify/references/exports.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_claude_skills_graphify_references_exports_exports",
+      "community": 3,
+      "norm_label": "exports (neo4j/falkordb/svg/graphml/mcp) reference"
+    },
+    {
+      "label": "Neo4j Export Target",
+      "file_type": "concept",
+      "source_file": ".claude/skills/graphify/references/exports.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_claude_skills_graphify_references_exports_neo4j",
+      "community": 3,
+      "norm_label": "neo4j export target"
+    },
+    {
+      "label": "FalkorDB Export Target",
+      "file_type": "concept",
+      "source_file": ".claude/skills/graphify/references/exports.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_claude_skills_graphify_references_exports_falkordb",
+      "community": 3,
+      "norm_label": "falkordb export target"
+    },
+    {
+      "label": "Extraction Subagent Spec (reference)",
+      "file_type": "document",
+      "source_file": ".claude/skills/graphify/references/extraction-spec.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_claude_skills_graphify_references_extraction_spec_extraction_spec",
+      "community": 1,
+      "norm_label": "extraction subagent spec (reference)"
+    },
+    {
+      "label": "GitHub Clone & Cross-repo Merge (reference)",
+      "file_type": "document",
+      "source_file": ".claude/skills/graphify/references/github-and-merge.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_claude_skills_graphify_references_github_and_merge_github_and_merge",
+      "community": 1,
+      "norm_label": "github clone & cross-repo merge (reference)"
+    },
+    {
+      "label": "Commit Hook & CLAUDE.md Integration (reference)",
+      "file_type": "document",
+      "source_file": ".claude/skills/graphify/references/hooks.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_claude_skills_graphify_references_hooks_hooks",
+      "community": 1,
+      "norm_label": "commit hook & claude.md integration (reference)"
+    },
+    {
+      "label": "Query/Path/Explain Flow (reference)",
+      "file_type": "document",
+      "source_file": ".claude/skills/graphify/references/query.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_claude_skills_graphify_references_query_query",
+      "community": 4,
+      "norm_label": "query/path/explain flow (reference)"
+    },
+    {
+      "label": "LESSONS.md self-improving reflect loop",
+      "file_type": "concept",
+      "source_file": ".claude/skills/graphify/references/query.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_claude_skills_graphify_references_query_lessons_md_reflect",
+      "community": 4,
+      "norm_label": "lessons.md self-improving reflect loop"
+    },
+    {
+      "label": "Video/Audio Transcription (reference)",
+      "file_type": "document",
+      "source_file": ".claude/skills/graphify/references/transcribe.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_claude_skills_graphify_references_transcribe_transcribe",
+      "community": 5,
+      "norm_label": "video/audio transcription (reference)"
+    },
+    {
+      "label": "Whisper Transcription Model",
+      "file_type": "concept",
+      "source_file": ".claude/skills/graphify/references/transcribe.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_claude_skills_graphify_references_transcribe_whisper",
+      "community": 5,
+      "norm_label": "whisper transcription model"
+    },
+    {
+      "label": "Incremental Update & Cluster-only (reference)",
+      "file_type": "document",
+      "source_file": ".claude/skills/graphify/references/update.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "_claude_skills_graphify_references_update_update",
+      "community": 1,
+      "norm_label": "incremental update & cluster-only (reference)"
+    },
+    {
+      "label": "CLAUDE.md graphify Trigger Instruction",
+      "file_type": "document",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "claude_graphify_trigger",
+      "community": 1,
+      "norm_label": "claude.md graphify trigger instruction"
+    },
+    {
+      "label": "Juli\u00e1n Profile / Bio",
+      "file_type": "document",
+      "source_file": "Julian.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "julian_profile",
+      "community": 0,
+      "norm_label": "julian profile / bio"
+    },
+    {
+      "label": "Project README (Caude-proyects)",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "readme_overview",
+      "community": 6,
+      "norm_label": "project readme (caude-proyects)"
+    },
+    {
+      "label": "Skills.md Index",
+      "file_type": "document",
+      "source_file": "Skills.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "skills_index",
+      "community": 0,
+      "norm_label": "skills.md index"
+    },
+    {
+      "label": "Decision to omit graphify PreToolUse hooks",
+      "file_type": "rationale",
+      "source_file": "Skills.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "skills_hooks_omission_decision",
+      "community": 0,
+      "norm_label": "decision to omit graphify pretooluse hooks"
+    },
+    {
+      "label": "voz-julian.skill Package",
+      "file_type": "document",
+      "source_file": "voz-julian.skill",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "voz_julian_package",
+      "community": 0,
+      "norm_label": "voz-julian.skill package"
+    },
+    {
+      "label": "Voz y Estilo de Escritura \u2014 Juli\u00e1n",
+      "file_type": "rationale",
+      "source_file": "vozJulian.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null,
+      "id": "vozjulian_style_guide",
+      "community": 0,
+      "norm_label": "voz y estilo de escritura \u2014 julian"
+    }
+  ],
+  "links": [
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/find-skills/SKILL.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_agents_skills_find_skills_skill_find_skills",
+      "target": "_agents_skills_find_skills_skill_skills_cli"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/find-skills/SKILL.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_agents_skills_find_skills_skill_find_skills",
+      "target": "_agents_skills_find_skills_skill_skills_sh_leaderboard"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Skills.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_find_skills_skill_find_skills",
+      "target": "_agents_skills_find_skills_skill_find_skills"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Skills.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "skills_index",
+      "target": "_agents_skills_find_skills_skill_find_skills"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/find-skills/SKILL.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_find_skills_skill_find_skills",
+      "target": "_agents_skills_find_skills_skill_skills_cli"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/find-skills/SKILL.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_find_skills_skill_find_skills",
+      "target": "_agents_skills_find_skills_skill_skills_sh_leaderboard"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Skills.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "skills_index",
+      "target": "_claude_skills_find_skills_skill_find_skills"
+    },
+    {
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.65,
+      "source_file": "Skills.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_agents_skills_find_skills_skill_skills_cli",
+      "target": "_claude_skills_graphify_skill_graphifyy_package"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Skills.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "skills_index",
+      "target": "_agents_skills_find_skills_skill_skills_cli"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Skills.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_git_push_skill_git_push",
+      "target": "git_push_skill_git_push"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Skills.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "skills_index",
+      "target": "_claude_skills_git_push_skill_git_push"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Skills.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "skills_index",
+      "target": "git_push_skill_git_push"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/graphify/SKILL.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_graphify_skill_graphify",
+      "target": "_claude_skills_graphify_references_add_watch_add_watch"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/graphify/SKILL.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_graphify_skill_graphify",
+      "target": "_claude_skills_graphify_references_exports_exports"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/graphify/SKILL.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_graphify_skill_graphify",
+      "target": "_claude_skills_graphify_references_extraction_spec_extraction_spec"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/graphify/SKILL.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_graphify_skill_graphify",
+      "target": "_claude_skills_graphify_references_github_and_merge_github_and_merge"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/graphify/SKILL.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_graphify_skill_graphify",
+      "target": "_claude_skills_graphify_references_hooks_hooks"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/graphify/SKILL.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_graphify_skill_graphify",
+      "target": "_claude_skills_graphify_references_query_query"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/graphify/SKILL.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_graphify_skill_graphify",
+      "target": "_claude_skills_graphify_references_transcribe_transcribe"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/graphify/SKILL.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_graphify_skill_graphify",
+      "target": "_claude_skills_graphify_references_update_update"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/graphify/SKILL.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_graphify_skill_graphify",
+      "target": "_claude_skills_graphify_skill_graphifyy_package"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "claude_graphify_trigger",
+      "target": "_claude_skills_graphify_skill_graphify"
+    },
+    {
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Skills.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "skills_hooks_omission_decision",
+      "target": "_claude_skills_graphify_skill_graphify"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Skills.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "skills_index",
+      "target": "_claude_skills_graphify_skill_graphify"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Skills.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "skills_index",
+      "target": "_claude_skills_graphify_skill_graphifyy_package"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/graphify/references/exports.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_graphify_references_exports_exports",
+      "target": "_claude_skills_graphify_references_exports_falkordb"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/graphify/references/exports.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_graphify_references_exports_exports",
+      "target": "_claude_skills_graphify_references_exports_neo4j"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/graphify/references/query.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_graphify_references_query_query",
+      "target": "_claude_skills_graphify_references_query_lessons_md_reflect"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/graphify/references/transcribe.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "_claude_skills_graphify_references_transcribe_transcribe",
+      "target": "_claude_skills_graphify_references_transcribe_whisper"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Skills.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "skills_index",
+      "target": "julian_profile"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Skills.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "skills_index",
+      "target": "skills_hooks_omission_decision"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Skills.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "skills_index",
+      "target": "voz_julian_package"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Skills.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "skills_index",
+      "target": "vozjulian_style_guide"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Skills.md",
+      "source_location": null,
+      "weight": 1.0,
+      "source": "voz_julian_package",
+      "target": "vozjulian_style_guide"
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "installed_skills_set",
+      "label": "Skills Installed in .claude/skills",
+      "nodes": [
+        "_claude_skills_find_skills_skill_find_skills",
+        "_claude_skills_git_push_skill_git_push",
+        "_claude_skills_graphify_skill_graphify"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Skills.md"
+    },
+    {
+      "id": "graphify_reference_docs_set",
+      "label": "graphify Reference Documentation Set",
+      "nodes": [
+        "_claude_skills_graphify_references_add_watch_add_watch",
+        "_claude_skills_graphify_references_exports_exports",
+        "_claude_skills_graphify_references_extraction_spec_extraction_spec",
+        "_claude_skills_graphify_references_github_and_merge_github_and_merge",
+        "_claude_skills_graphify_references_hooks_hooks",
+        "_claude_skills_graphify_references_query_query",
+        "_claude_skills_graphify_references_transcribe_transcribe",
+        "_claude_skills_graphify_references_update_update"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".claude/skills/graphify/SKILL.md"
+    },
+    {
+      "id": "julian_identity_context_set",
+      "label": "Juli\u00e1n Identity & Writing-Voice Context",
+      "nodes": [
+        "julian_profile",
+        "vozjulian_style_guide",
+        "voz_julian_package"
+      ],
+      "relation": "form",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "Skills.md"
+    }
+  ],
+  "built_at_commit": "13520767a8510a35e95a1d8719977611201ad809"
+}
