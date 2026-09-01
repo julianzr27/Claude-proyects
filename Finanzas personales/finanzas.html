@@ -338,10 +338,15 @@ function valorAlVencimiento(i){
 }
 const diasSinConfirmar=i=>esFija(i)?diasEntre(i.fechaSaldo):diasEntre(i.fechaActualizacion);
 const DESACTUALIZADA=30;
+// Plata disponible para pagar tarjetas: cuentas de ahorro. Un CDT no cuenta,
+// está inmovilizado hasta el vencimiento.
+const liquidez=()=>sum(state.inversiones.filter(i=>i.tipo==="cuenta").map(i=>({monto:valorHoy(i)})));
 
 function patrimonio(){return sum(state.inversiones.map(i=>({monto:valorHoy(i)})))-sum(state.tarjetas.map(t=>({monto:t.saldo})));}
 function tarjetaSaldos(){ // recompute from movimientos so imports/edits stay consistent
-  const s={};state.tarjetas.forEach(t=>s[t.id]=0);
+  // Arranca en la deuda que ya venía de antes de usar el dashboard: es saldo,
+  // no gasto del mes, porque esas compras ocurrieron en meses anteriores.
+  const s={};state.tarjetas.forEach(t=>s[t.id]=+t.saldoInicial||0);
   state.movimientos.forEach(m=>{
     if(!(m.medio in s))return;
     if(m.tipo==="gasto")s[m.medio]+=(+m.monto||0);
@@ -620,26 +625,42 @@ function actualizarSaldo(id){
 
 function vTarj(){
   const saldos=tarjetaSaldos();
+  const e=ui.editId?state.tarjetas.find(t=>t.id===ui.editId):null;
   const pagos=state.movimientos.filter(m=>m.tipo==="pago_tarjeta").sort((a,b)=>a.fecha<b.fecha?1:-1).slice(0,12);
+  const deudaTotal=state.tarjetas.reduce((s,t)=>s+(saldos[t.id]||0),0);
+  const disponible=liquidez();
   return '<div class="topbar"><h1>Tarjetas de crédito</h1></div>'
   +'<form class="formcard" data-form="tarjeta"><div class="formrow">'
-   +fld("Nombre",'<input name="nombre" placeholder="Ej. RappiCard, Visa Bancolombia" required>',"grow")
-   +fld("Día de corte",'<input class="num" name="diaCorte" inputmode="numeric" placeholder="1-31" required>')
-   +fld("Día de pago",'<input class="num" name="diaPago" inputmode="numeric" placeholder="1-31" required>')
-   +'<button class="btn" type="submit">Agregar tarjeta</button>'
-  +'</div></form>'
+   +fld("Nombre",'<input name="nombre" placeholder="Ej. RappiCard, Visa Bancolombia" required value="'+esc(e?e.nombre:"")+'">',"grow")
+   +fld("Día de corte",'<input class="num" name="diaCorte" inputmode="numeric" placeholder="1-31" required value="'+(e?e.diaCorte:"")+'">')
+   +fld("Día de pago",'<input class="num" name="diaPago" inputmode="numeric" placeholder="1-31" required value="'+(e?e.diaPago:"")+'">')
+   +fld("Deuda actual",'<input class="num" name="saldoInicial" inputmode="numeric" placeholder="0" value="'+(e?(e.saldoInicial||0):"")+'">')
+   +'<button class="btn" type="submit">'+(e?"Guardar cambios":"Agregar tarjeta")+'</button>'
+   +(e?'<button class="btn ghost" type="button" data-act="canceledit">Cancelar</button>':"")
+  +'</div><div class="hint">«Deuda actual» es lo que ya debes hoy, de compras anteriores a este dashboard. Suma al saldo de la tarjeta pero no cuenta como gasto del mes.</div></form>'
   +(state.tarjetas.length?'<div class="grid2">'+state.tarjetas.map(t=>{
-      const nd=nextPayDate(t.diaPago),du=daysUntil(nd);
+      const nd=nextPayDate(t.diaPago),du=daysUntil(nd),saldo=saldos[t.id]||0;
+      const gastado=saldo-(+t.saldoInicial||0)+sum(state.movimientos.filter(m=>m.tipo==="pago_tarjeta"&&m.medio===t.id));
       return '<div class="panel"><h2>'+esc(t.nombre)+' <span class="aside">corte '+t.diaCorte+' · pago '+t.diaPago+'</span></h2>'
-       +row2("Saldo causado",fmt.format(saldos[t.id]||0))
+       +(+t.saldoInicial?row2("Deuda previa registrada",fmt.format(t.saldoInicial)):"")
+       +(gastado?row2("Compras registradas aquí",fmt.format(gastado)):"")
+       +row2("Saldo por pagar",fmt.format(saldo),saldo>0?"neg":"")
        +row2("Próximo pago",dISO(nd)+' <span class="due '+(du<=2?"now":du<=7?"soon":"")+'">en '+du+' días</span>')
-       +'<div style="margin-top:10px;display:flex;gap:8px"><button class="btn ghost sm" data-act="pagar" data-id="'+t.id+'">Registrar pago</button>'
+       +'<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost sm" data-act="pagar" data-id="'+t.id+'">Registrar pago</button>'
+       +'<button class="rowbtn" data-act="edittarj" data-id="'+t.id+'">editar</button>'
        +'<button class="rowbtn" data-act="deltarj" data-id="'+t.id+'">eliminar</button></div></div>';
     }).join("")+'</div>':'<div class="empty">Registra tus tarjetas para seguir corte, pago y saldo.</div>')
+  +(deudaTotal>0?'<div class="panel" style="margin-top:16px"><h2>Con qué la pagas</h2>'
+     +row2("Deuda total en tarjetas",fmt.format(deudaTotal),"neg")
+     +row2("Disponible en cuentas de ahorro",fmt.format(disponible),disponible>=deudaTotal?"pos":"")
+     +row2(disponible>=deudaTotal?"Te sobra":"Te falta",fmt.format(Math.abs(disponible-deudaTotal)),disponible>=deudaTotal?"pos":"neg")
+     +'<div class="hint">Los CDT no se cuentan aquí: están inmovilizados hasta su vencimiento.</div></div>':"")
   +'<div class="sectionhead"><h2>Pagos registrados</h2></div>'
-  +(pagos.length?tbl(["Fecha","Tarjeta","Monto",""],pagos.map(m=>[
-     '<span class="num">'+m.fecha+'</span>',medioNombre(m.medio),'<span class="num">'+fmt.format(m.monto)+'</span>',
-     '<button class="rowbtn" data-act="del" data-id="'+m.id+'">✕</button>']),[0,0,1,1])
+  +(pagos.length?tbl(["Fecha","Tarjeta","Pagado desde","Monto",""],pagos.map(m=>{
+     const c=state.inversiones.find(x=>x.id===m.desde);
+     return ['<span class="num">'+m.fecha+'</span>',medioNombre(m.medio),
+     '<span class="tag">'+(c?esc(c.nombre):"Otra fuente")+'</span>','<span class="num">'+fmt.format(m.monto)+'</span>',
+     '<button class="rowbtn" data-act="del" data-id="'+m.id+'">✕</button>'];}),[0,0,0,1,1])
    :'<div class="hint">Un pago de tarjeta reduce el saldo y no cuenta como gasto del mes.</div>');
 }
 
@@ -656,6 +677,7 @@ document.addEventListener("click",e=>{
     case"editinv":{const inv=state.inversiones.find(x=>x.id===a.dataset.id);
       ui.editId=a.dataset.id;ui.invTipo=inv?inv.tipo:null;ui.section="inversiones";render();scrollTo(0,0);break;}
     case"actsaldo":actualizarSaldo(a.dataset.id);break;
+    case"edittarj":ui.editId=a.dataset.id;ui.section="tarjetas";render();scrollTo(0,0);break;
     case"del":if(confirm("¿Eliminar este movimiento?")){state.movimientos=state.movimientos.filter(m=>m.id!==a.dataset.id);commit();}break;
     case"delinv":if(confirm("¿Eliminar esta posición?")){state.inversiones=state.inversiones.filter(i=>i.id!==a.dataset.id);commit();}break;
     case"deltarj":{const t=state.tarjetas.find(x=>x.id===a.dataset.id);
@@ -711,7 +733,9 @@ document.addEventListener("submit",async e=>{
     ui.invTipo=null; f.reset();commit();
   }else if(kind==="tarjeta"){
     const cl=n=>Math.min(31,Math.max(1,parseInt(n,10)||1));
-    state.tarjetas.push({id:uid(),nombre:(d.nombre||"").trim(),diaCorte:cl(d.diaCorte),diaPago:cl(d.diaPago),saldo:0});
+    const rec={nombre:(d.nombre||"").trim(),diaCorte:cl(d.diaCorte),diaPago:cl(d.diaPago),saldoInicial:money(d.saldoInicial)};
+    if(ui.editId){Object.assign(state.tarjetas.find(t=>t.id===ui.editId),rec);ui.editId=null;}
+    else state.tarjetas.push(Object.assign({id:uid(),saldo:0},rec));
     f.reset();commit();
   }
 });
@@ -719,12 +743,37 @@ document.addEventListener("submit",async e=>{
 function pagarTarjeta(id){
   const t=state.tarjetas.find(x=>x.id===id);if(!t)return;
   const saldos=tarjetaSaldos();
-  const v=prompt("Monto del pago a "+t.nombre+" (COP):",String(Math.max(0,saldos[id]||0)));
-  if(v==null)return;
-  const monto=Math.round(parseFloat(String(v).replace(/[^\d.-]/g,""))||0);
-  if(monto<=0)return;
-  state.movimientos.push({id:uid(),fecha:todayISO(),tipo:"pago_tarjeta",medio:id,descripcion:"Pago "+t.nombre,monto:monto,fuente:"manual"});
-  commit();
+  const deuda=Math.max(0,saldos[id]||0);
+  const cuentas=state.inversiones.filter(i=>i.tipo==="cuenta");
+  modal('<h2>Pagar '+esc(t.nombre)+'</h2>'
+   +'<p class="sub">Saldo por pagar: '+fmt.format(deuda)+'. Puedes abonar solo una parte.</p>'
+   +'<div class="formrow">'
+    +fld("Monto del pago",'<input class="num" id="pg-monto" inputmode="numeric" value="'+deuda+'">')
+    +fld("¿De dónde sale?",'<select id="pg-desde"><option value="">Otra fuente (no descontar)</option>'
+      +cuentas.map(c=>'<option value="'+c.id+'">'+esc(c.nombre)+' · '+fmt.format(valorHoy(c))+'</option>').join("")+'</select>',"grow")
+   +'</div>'
+   +'<div class="msg warn" id="pg-aviso" style="margin-top:12px"></div>'
+   +'<div class="acts"><button class="btn ghost" data-act="closemodal">Cancelar</button><button class="btn" id="pg-go">Registrar pago</button></div>');
+  const leer=v=>Math.round(parseFloat(String(v).replace(/[^\d,.-]/g,"").replace(/\.(?=\d{3}\b)/g,"").replace(",","."))||0);
+  function pintar(){
+    const monto=leer($("#pg-monto").value), desde=$("#pg-desde").value;
+    const c=cuentas.find(x=>x.id===desde);
+    const queda=deuda-monto;
+    let txt=queda>0?"Quedarían "+fmt.format(queda)+" por pagar.":(queda<0?"Estás pagando "+fmt.format(-queda)+" más que el saldo.":"Deja la tarjeta en cero.");
+    if(c)txt+=" "+esc(c.nombre)+" bajaría a "+fmt.format(valorHoy(c)-monto)+".";
+    $("#pg-aviso").textContent=txt;
+  }
+  $("#pg-monto").oninput=pintar; $("#pg-desde").onchange=pintar; pintar();
+  $("#pg-go").onclick=()=>{
+    const monto=leer($("#pg-monto").value), desde=$("#pg-desde").value;
+    if(monto<=0)return;
+    state.movimientos.push({id:uid(),fecha:todayISO(),tipo:"pago_tarjeta",medio:id,desde:desde||undefined,
+      descripcion:"Pago "+t.nombre,monto:monto,fuente:"manual"});
+    const c=state.inversiones.find(x=>x.id===desde);
+    // Sacar plata de la cuenta baja saldo y capital por igual: no es pérdida ni ganancia.
+    if(c){c.saldo=(+c.saldo||0)-monto;c.aportado=(+c.aportado||0)-monto;}
+    closeModal();commit();
+  };
 }
 
 // ---- image thumb ----
