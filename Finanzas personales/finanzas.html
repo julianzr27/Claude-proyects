@@ -247,6 +247,8 @@ function migrarInversiones(){
     i.fechaSaldo=i.fechaActualizacion||todayISO();
     delete i.valorActual;delete i.montoInvertido;
   });
+  // Las acciones registradas antes no tenían cantidad: el valor guardado era el total.
+  state.inversiones.forEach(i=>{if(i.tipo==="accion"&&!(+i.cantidad>0))i.cantidad=1;});
   // "cuenta" y "efectivo" eran etiquetas genéricas; ahora el medio apunta a una
   // posición real. Lo genérico pasa a «sin especificar» para no mover saldos ajenos.
   const hayEfectivo=state.inversiones.some(i=>i.id===ID_EFECTIVO);
@@ -424,6 +426,9 @@ function gananciaActivoCOP(i){return aCOP(valorNativo(i)-aportadoNativo(i),i);}
 function efectoDolar(i){return esUSD(i)?(valorHoy(i)-aportadoDe(i))-gananciaActivoCOP(i):0;}
 // Rentabilidad llevada a base anual, para poder compararla con la tasa E.A. de
 // una cuenta o un CDT. Sin fecha de compra no hay periodo y no se puede anualizar.
+const cantidadDe=i=>(+i.cantidad>0?+i.cantidad:1);
+const precioDe=i=>(+i.valorActual||0)/cantidadDe(i);
+const precioCompraDe=i=>(+i.montoInvertido||0)/cantidadDe(i);
 function anualizado(i){
   const inv=+i.montoInvertido||0, act=+i.valorActual||0;
   if(!i.fechaCompra||inv<=0||act<=0)return null;
@@ -692,9 +697,11 @@ function vInv(){
       +fld("Tasa E.A. (%)",'<input class="num" name="tasaEA" inputmode="decimal" placeholder="Ej. 11,5" required value="'+(e?e.tasaEA:"")+'">')
       +(tipoForm==="cdt"?fld("Vence el",'<input type="date" name="vencimiento" value="'+esc(e?e.vencimiento:"")+'">'):"")
     : (e // al crear se pide lo que muestra el broker; al editar, el costo ya está fijado
-       ? fld("Invertido"+suf,'<input class="num" name="montoInvertido" inputmode="decimal" required value="'+e.montoInvertido+'">')
-         +fld("Valor actual"+suf,'<input class="num" name="valorActual" inputmode="decimal" required value="'+e.valorActual+'">')
-       : fld("Valor actual"+suf,'<input class="num" name="valorActual" inputmode="decimal" required value="">')
+       ? fld("Cantidad",'<input class="num" name="cantidad" inputmode="decimal" required value="'+cantidadDe(e)+'">')
+         +fld("Precio por acción"+suf,'<input class="num" name="precio" inputmode="decimal" required value="'+(usd?Math.round(precioDe(e)*100)/100:Math.round(precioDe(e)))+'">')
+         +fld("Invertido"+suf,'<input class="num" name="montoInvertido" inputmode="decimal" required value="'+e.montoInvertido+'">')
+       : fld("Cantidad",'<input class="num" name="cantidad" inputmode="decimal" placeholder="Ej. 120" required value="">')
+         +fld("Precio por acción"+suf,'<input class="num" name="precio" inputmode="decimal" required value="">')
          +fld("Rentabilidad","<div style=\"display:flex;gap:6px\">"
             +'<input class="num" name="rent" inputmode="decimal" placeholder="Ej. 12,4" required style="min-width:90px">'
             +'<select name="rentUnidad" style="min-width:70px"><option value="pct">%</option><option value="abs">'+(usd?"US$":"$")+'</option></select></div>'))
@@ -776,7 +783,10 @@ function vInv(){
       const r=inv?gan/inv*100:0;
       const viejo=diasSinConfirmar(i)>=DESACTUALIZADA;
       const anual=anualizado(i), fx=efectoDolar(i);
+      const cant=cantidadDe(i);
       const detalle=[i.nota?esc(i.nota):"",
+        fmt2.format(cant)+(cant===1?" acción":" acciones")+" a "+fmtMon(precioDe(i),i)+" c/u"
+          +(inv>0?" · compradas a "+fmtMon(precioCompraDe(i),i):""),
         i.fechaCompra?"Comprada el "+esc(i.fechaCompra)+(anual!==null?" · "+fmt2.format(anual)+"% anual equivalente":""):"",
         esUSD(i)?"El dólar "+(fx>=0?"sumó ":"restó ")+fmt.format(Math.abs(fx)):""].filter(Boolean).join(" · ");
       return [esc(i.nombre)+(viejo?' <span class="tag" style="color:var(--warn)">sin actualizar hace '+diasSinConfirmar(i)+'d</span>':"")
@@ -998,14 +1008,19 @@ document.addEventListener("submit",async e=>{
       nota:(d.nota||"").trim(),fechaActualizacion:todayISO()};
     let rec;
     if(d.tipo==="accion"){
-      const actual=val(d.valorActual);
+      // trii muestra cantidad y precio por acción; el total lo calcula el dashboard
+      const num=v=>parseFloat(String(v||"").split(".").join("").replace(",","."))||0;
+      const cantidad=Math.max(num(d.cantidad)||1,0.0000001);
+      const bruto=cantidad*num(d.precio);
+      const actual=usdRec?Math.round(bruto*100)/100:Math.round(bruto);
       // Al crear se deduce el costo desde la rentabilidad que muestra el broker;
       // a partir de ahí el costo queda quieto y basta actualizar el valor.
       let invertido;
       if(ui.editId){invertido=val(d.montoInvertido);}
       else if(d.rentUnidad==="abs"){invertido=actual-val(d.rent);}
       else{const p=dec(d.rent);invertido=p<=-100?actual:actual/(1+p/100);} // -100% dejaría el costo en infinito
-      rec=Object.assign(base,{montoInvertido:Math.max(0,invertido),valorActual:actual,
+      invertido=usdRec?Math.round(invertido*100)/100:Math.round(invertido);
+      rec=Object.assign(base,{cantidad:cantidad,montoInvertido:Math.max(0,invertido),valorActual:actual,
         fechaCompra:d.fechaCompra||undefined});
     }else{
       rec=Object.assign(base,{saldo:val(d.saldo),fechaSaldo:d.fechaSaldo||todayISO(),tasaEA:tasa(d.tasaEA),
