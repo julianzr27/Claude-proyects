@@ -938,17 +938,23 @@ document.addEventListener("click",e=>{
       ui.filtro[c]=ui.filtro[c]===v?null:v; // volver a hacer clic lo quita
       render();break;}
     case"quitarfiltro":ui.filtro[a.dataset.campo]=null;render();break;
-    case"trm":{const v=prompt("¿A cuánto está el dólar hoy? (TRM en pesos)",String(Math.round(TRM())));
-      if(v==null)break;
-      const n=Math.round(parseFloat(String(v).replace(/[^\d,.-]/g,"").replace(/\.(?=\d{3}\b)/g,"").replace(",","."))||0);
-      if(n>0){state.config.trm=n;state.config.trmFecha=todayISO();state.config.trmConfirmada=true;commit();}
-      break;}
+    case"trm":pedirValor({titulo:"Actualizar TRM",texto:"¿A cuánto está el dólar hoy? Con esto se valoran tus posiciones en dólares.",
+      etiqueta:"TRM en pesos",valor:Math.round(TRM()),ok:"Actualizar"}).then(v=>{
+        if(v==null)return;
+        const n=Math.round(Number(String(v).replace(/[^0-9]/g,""))||0);
+        if(n>0){state.config.trm=n;state.config.trmFecha=todayISO();state.config.trmConfirmada=true;commit();}
+      });break;
     case"edittarj":ui.editId=a.dataset.id;ui.section="tarjetas";render();scrollTo(0,0);break;
-    case"del":if(confirm("¿Eliminar este movimiento?")){state.movimientos=state.movimientos.filter(m=>m.id!==a.dataset.id);commit();}break;
-    case"delinv":if(confirm("¿Eliminar esta posición?")){state.inversiones=state.inversiones.filter(i=>i.id!==a.dataset.id);commit();}break;
+    case"del":{const id=a.dataset.id;
+      confirmar("Eliminar movimiento","Se quita del historial y se deshace su efecto sobre los saldos.","Eliminar")
+        .then(ok=>{if(ok){state.movimientos=state.movimientos.filter(m=>m.id!==id);commit();}});break;}
+    case"delinv":{const id=a.dataset.id, inv=state.inversiones.find(x=>x.id===id);
+      confirmar("Eliminar "+(inv?inv.nombre:"posición"),"Su saldo deja de contar en tu patrimonio.","Eliminar")
+        .then(ok=>{if(ok){state.inversiones=state.inversiones.filter(i=>i.id!==id);commit();}});break;}
     case"deltarj":{const t=state.tarjetas.find(x=>x.id===a.dataset.id);
-      if(confirm("¿Eliminar "+(t?t.nombre:"tarjeta")+"? Los gastos asociados quedan sin medio."))
-      {state.tarjetas=state.tarjetas.filter(x=>x.id!==a.dataset.id);commit();}break;}
+      const id=a.dataset.id;
+      confirmar("Eliminar "+(t?t.nombre:"tarjeta"),"Los gastos que pagaste con ella quedan sin medio asignado.","Eliminar")
+        .then(ok=>{if(ok){state.tarjetas=state.tarjetas.filter(x=>x.id!==id);commit();}});break;}
     case"rmimg":{const m=state.movimientos.find(x=>x.id===ui.editId);if(m){delete m.imagen;commit();}break;}
     case"export":doExport();break;
     case"import":doImport();break;
@@ -1103,20 +1109,57 @@ function doImport(){
   inp.onchange=()=>{const fl=inp.files[0];if(!fl)return;const r=new FileReader();
     r.onload=()=>{try{const raw=JSON.parse(r.result);
       if(!Array.isArray(raw.movimientos))throw 0;
-      if(!confirm("Esto reemplaza todos los datos actuales. ¿Continuar?"))return;
-      state=Object.assign(defaults(),raw);state.tarjetas||=[];state.inversiones||=[];state.movimientos||=[];
-      ui.editId=null;commit();
-    }catch(e){alert("Archivo no válido.");}};
+      confirmar("Importar respaldo","Esto reemplaza todos los datos actuales por los del archivo.","Reemplazar").then(ok=>{
+        if(!ok)return;
+        state=Object.assign(defaults(),raw);
+        state.config=Object.assign(defaults().config,raw.config||{});
+        state.tarjetas||=[];state.inversiones||=[];state.movimientos||=[];
+        migrarInversiones(); ui.editId=null;commit();
+      });
+    }catch(e){avisar("Archivo no válido","Ese archivo no parece un respaldo de este dashboard.");}};
     r.readAsText(fl);};
   inp.click();
 }
 
 // ---- modal ----
-function modal(html){closeModal();const bg=document.createElement("div");bg.className="modalbg";bg.id="modalbg";
+let alCerrarModal=null;
+function modal(html,alCerrar){closeModal();alCerrarModal=alCerrar||null;
+  const bg=document.createElement("div");bg.className="modalbg";bg.id="modalbg";
   bg.innerHTML='<div class="modal">'+html+'</div>';
   bg.addEventListener("click",e=>{if(e.target===bg)closeModal();});
   document.body.appendChild(bg);}
-function closeModal(){const m=$("#modalbg");if(m)m.remove();}
+function closeModal(){const m=$("#modalbg");if(m)m.remove();
+  const cb=alCerrarModal;alCerrarModal=null;if(cb)cb();}
+
+// El visor de Artifacts corre la página en un marco restringido: prompt,
+// confirm y alert se ignoran en silencio. Estos los reemplazan.
+function pedirValor(o){
+  return new Promise(res=>{
+    const cerrar=v=>{alCerrarModal=null;closeModal();res(v);};
+    modal('<h2>'+esc(o.titulo)+'</h2>'+(o.texto?'<p class="sub">'+esc(o.texto)+'</p>':"")
+     +'<div class="formrow">'+fld(o.etiqueta||"Valor",'<input class="num" id="dlg-in" value="'+esc(o.valor==null?"":o.valor)+'">',"grow")+'</div>'
+     +'<div class="acts"><button class="btn ghost" id="dlg-no">Cancelar</button>'
+     +'<button class="btn" id="dlg-si">'+esc(o.ok||"Guardar")+'</button></div>', ()=>res(null));
+    const inp=$("#dlg-in"); if(inp){inp.focus();inp.select();
+      inp.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();cerrar(inp.value);}};}
+    $("#dlg-no").onclick=()=>cerrar(null);
+    $("#dlg-si").onclick=()=>cerrar(inp?inp.value:null);
+  });
+}
+function confirmar(titulo,texto,ok){
+  return new Promise(res=>{
+    const cerrar=v=>{alCerrarModal=null;closeModal();res(v);};
+    modal('<h2>'+esc(titulo)+'</h2>'+(texto?'<p class="sub">'+esc(texto)+'</p>':"")
+     +'<div class="acts"><button class="btn ghost" id="dlg-no">Cancelar</button>'
+     +'<button class="btn" id="dlg-si">'+esc(ok||"Confirmar")+'</button></div>', ()=>res(false));
+    $("#dlg-no").onclick=()=>cerrar(false);
+    $("#dlg-si").onclick=()=>cerrar(true);
+  });
+}
+function avisar(titulo,texto){
+  modal('<h2>'+esc(titulo)+'</h2><p class="sub">'+esc(texto)+'</p>'
+   +'<div class="acts"><button class="btn" data-act="closemodal">Cerrar</button></div>');
+}
 
 // ---- Gmail sync ----
 const RECV_SENDERS=/rappicard\.co|trii\.co|accivalores\.com|bancolombia|davivienda|nu\.com\.co|scotiabank/i;
@@ -1207,7 +1250,7 @@ function renderReview(cands,kind){
       state.movimientos.push(rec);n++;
     });
     closeModal();commit();
-    if(n)setTimeout(()=>alert("Importados "+n+" movimientos."),50);
+    if(n)setTimeout(()=>avisar("Listo",n+(n===1?" movimiento importado.":" movimientos importados.")),60);
   };
 }
 
