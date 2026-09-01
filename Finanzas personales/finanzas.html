@@ -926,6 +926,8 @@ function vTarj(){
       const nd=nextPayDate(t.diaPago),du=daysUntil(nd),c=tarjetaCiclos(t);
       const nd2=pagoSiguiente(t.diaPago);
       return '<div class="panel"><h2>'+esc(t.nombre)+' <span class="aside">corte '+t.diaCorte+' · pago '+t.diaPago+'</span></h2>'
+       +(c.total<0?'<div class="msg warn">Saldo negativo: has pagado '+fmt.format(-c.total)
+          +' más de lo que esta tarjeta tenía registrado. Suele significar que la deuda quedó incompleta al registrarla, o que el pago era de otra tarjeta.</div>':"")
        +row2("A pagar el "+dISO(nd),fmt.format(c.facturado)
           +' <span class="due '+(du<=2?"now":du<=7?"soon":"")+'">en '+du+(du===1?" día":" días")+'</span>',c.facturado>0?"neg":"")
        +row2("Compras del ciclo en curso",fmt.format(c.enCurso)
