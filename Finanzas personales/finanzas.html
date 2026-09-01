@@ -88,9 +88,6 @@ select.month{background:var(--surface);border:1px solid var(--line-2);border-rad
 .panel>div>span{min-width:0;overflow-wrap:anywhere}
 
 .donutwrap{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
-.donut{width:128px;height:128px;border-radius:50%;position:relative;flex:none}
-.donut::after{content:"";position:absolute;inset:23%;border-radius:50%;background:var(--surface)}
-.donut.empty{background:var(--surface-3)!important}
 .legend{display:flex;flex-direction:column;gap:6px;font-size:.83rem;min-width:150px;flex:1}
 .legend .row{display:flex;align-items:center;gap:8px}
 .legend .sw{width:10px;height:10px;border-radius:3px;flex:none}
@@ -149,6 +146,19 @@ td.r,th.r{text-align:right}
 :root[data-theme="dark"] .msg.err,:root:not([data-theme="light"]) .msg.err{background:#3a201c}
 .due{font-family:var(--mono);font-size:.8rem}
 .due.soon{color:var(--warn)} .due.now{color:var(--neg);font-weight:600}
+
+.donut{width:128px;height:128px;flex:none}
+.donut [data-act="filtro"]:hover{filter:brightness(1.15)}
+.donut :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.legend .row.clic{cursor:pointer;border-radius:6px;padding:2px 4px;margin:-2px -4px}
+.legend .row.clic:hover{background:var(--surface-2)}
+.legend .row.on{background:var(--accent-soft)}
+.legend .row.on .nm{color:var(--accent);font-weight:600}
+.filtro{display:inline-flex;align-items:center;gap:8px;background:var(--accent-soft);color:var(--accent);
+  border-radius:20px;padding:4px 6px 4px 12px;font-size:.82rem;margin-bottom:14px}
+.filtro .lbl{font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;opacity:.75}
+.filtro .val{font-weight:600}
+.filtro .rowbtn{color:var(--accent)}
 
 /* Las cifras en COP no se pueden partir: por debajo de esto, cuatro tiles
    en fila desbordan. Mejor dos filas de dos que scroll horizontal. */
@@ -210,7 +220,7 @@ const mesNombre=mk=>MESES[+mk.slice(5,7)-1]||mk;
 
 // ---- state ----
 let state=defaults();
-function defaults(){return{v:1,config:{moneda:"COP",trm:4000,trmFecha:todayISO()},tarjetas:[],inversiones:[],movimientos:[]};}
+function defaults(){return{v:1,config:{moneda:"COP",trm:0,trmFecha:"",trmConfirmada:false},tarjetas:[],inversiones:[],movimientos:[]};}
 function load(){
   try{
     const raw=JSON.parse($("#datos").textContent);
@@ -247,7 +257,8 @@ function migrarInversiones(){
 }
 // La sección y el mes viven en sessionStorage: al guardar, el visor recarga
 // la página con la versión nueva, y sin esto siempre caerías en Resumen.
-const ui={section:"resumen",month:nowMonth(),editId:null,mesElegido:false};
+const ui={section:"resumen",month:nowMonth(),editId:null,mesElegido:false,
+  filtro:{cat:null,inv:null}}; // cat: categoría de gasto/ingreso · inv: tipo de inversión
 try{const s=JSON.parse(sessionStorage.getItem("ui-finanzas")||"null");
   if(s&&s.section)ui.section=s.section;
   // Solo se respeta el mes guardado si Julián lo eligió a mano. Si venía del
@@ -378,7 +389,19 @@ function interesCausado(i){ // interés estimado desde el último saldo confirma
 // ---- posiciones en dólares ----
 // Se guardan en su moneda y una sola TRM las convierte a pesos para los totales.
 // Así se distingue lo que rindió el activo de lo que se movió el dólar.
-const TRM=()=>+state.config.trm||1;
+// Nunca se inventa una TRM. Mientras Julián no confirme la de hoy, se usa la
+// del último dólar que realmente compró: así el efecto cambiario sale en cero
+// en vez de fabricar una ganancia contra un número arbitrario.
+function TRM(){
+  const c=state.config.trmConfirmada?(+state.config.trm||0):0;
+  if(c>0)return c;
+  for(let k=state.inversiones.length-1;k>=0;k--){
+    const i=state.inversiones[k], base=(+i.aportado||+i.montoInvertido||0);
+    if(i.moneda==="USD"&&(+i.aportadoCOP)>0&&base>0)return i.aportadoCOP/base; // sin helpers: evita recursión
+  }
+  return 1;
+}
+const trmPendiente=()=>state.inversiones.some(esUSD)&&!state.config.trmConfirmada;
 const esUSD=i=>i&&i.moneda==="USD";
 const aCOP=(v,i)=>esUSD(i)?v*TRM():v;
 // los movimientos se registran en pesos; para una posición en dólares se convierten
@@ -435,17 +458,44 @@ function nextPayDate(day){const t=new Date();t.setHours(0,0,0,0);let d=new Date(
 const daysUntil=d=>Math.round((d-new Date().setHours(0,0,0,0))/86400000);
 
 // ---- charts ----
-function donut(parts){
+// Dona en SVG y no en conic-gradient, porque cada porción tiene que ser
+// clicable para filtrar. `campo` la vuelve interactiva; sin él solo dibuja.
+function donut(parts,campo){
   const tot=parts.reduce((s,p)=>s+p.v,0);
-  if(!tot) return '<div class="donut empty"></div>';
-  let acc=0;const stops=parts.map(p=>{const a=acc/tot*100;acc+=p.v;return p.c+" "+a.toFixed(2)+"% "+(acc/tot*100).toFixed(2)+"%";}).join(",");
-  return '<div class="donut" style="background:conic-gradient('+stops+')"></div>';
+  const R=64,r=39,cx=64,cy=64,act=campo?ui.filtro[campo]:null;
+  const anillo=c=>'<circle cx="64" cy="64" r="'+((R+r)/2)+'" fill="none" stroke="'+c+'" stroke-width="'+(R-r)+'"/>';
+  if(!tot) return '<svg class="donut" viewBox="0 0 128 128" aria-hidden="true">'+anillo("var(--surface-3)")+'</svg>';
+  const vivos=parts.filter(p=>p.v>0);
+  const attrs=p=>campo?' data-act="filtro" data-campo="'+campo+'" data-valor="'+esc(p.n)+'" style="cursor:pointer'
+      +(act&&act!==p.n?';opacity:.28':"")+'" tabindex="0" role="button" aria-label="Filtrar por '+esc(p.n)+'"':"";
+  // una sola porción no se puede dibujar como arco: el inicio y el fin coinciden
+  if(vivos.length===1) return '<svg class="donut" viewBox="0 0 128 128">'
+    +'<g'+attrs(vivos[0])+'>'+anillo(vivos[0].c)+'</g></svg>';
+  let a0=-Math.PI/2;
+  const pt=(a,rad)=>[(cx+rad*Math.cos(a)).toFixed(2),(cy+rad*Math.sin(a)).toFixed(2)];
+  const arcos=vivos.map(p=>{
+    const a1=a0+p.v/tot*2*Math.PI, grande=(a1-a0)>Math.PI?1:0;
+    const[x0,y0]=pt(a0,R),[x1,y1]=pt(a1,R),[x2,y2]=pt(a1,r),[x3,y3]=pt(a0,r);
+    a0=a1;
+    return '<path d="M'+x0+' '+y0+'A'+R+' '+R+' 0 '+grande+' 1 '+x1+' '+y1
+      +'L'+x2+' '+y2+'A'+r+' '+r+' 0 '+grande+' 0 '+x3+' '+y3+'Z" fill="'+p.c+'"'+attrs(p)+'></path>';
+  }).join("");
+  return '<svg class="donut" viewBox="0 0 128 128">'+arcos+'</svg>';
 }
-function legend(parts){
-  const tot=parts.reduce((s,p)=>s+p.v,0)||1;
+function legend(parts,campo,fmtV){
+  const tot=parts.reduce((s,p)=>s+p.v,0)||1, act=campo?ui.filtro[campo]:null;
+  const F=fmtV||(v=>fmt.format(v));
   return '<div class="legend">'+parts.filter(p=>p.v>0).map(p=>
-    '<div class="row"><span class="sw" style="background:'+p.c+'"></span><span class="nm">'+esc(p.n)+'</span>'
-    +'<span class="vl">'+fmt.format(p.v)+'</span><span class="vl" style="color:var(--ink-3)">'+(p.v/tot*100).toFixed(0)+'%</span></div>').join("")+'</div>';
+    '<div class="row'+(campo?" clic":"")+(act===p.n?" on":"")+'"'
+    +(campo?' data-act="filtro" data-campo="'+campo+'" data-valor="'+esc(p.n)+'" tabindex="0" role="button"':"")+'>'
+    +'<span class="sw" style="background:'+p.c+'"></span><span class="nm">'+esc(p.n)+'</span>'
+    +'<span class="vl">'+F(p.v)+'</span><span class="vl" style="color:var(--ink-3)">'+(p.v/tot*100).toFixed(0)+'%</span></div>').join("")+'</div>';
+}
+// Cinta que muestra el filtro activo y permite quitarlo
+function chipFiltro(campo,etiqueta){
+  const v=ui.filtro[campo]; if(!v)return "";
+  return '<div class="filtro"><span class="lbl">'+esc(etiqueta)+'</span><span class="val">'+esc(v)+'</span>'
+    +'<button class="rowbtn" data-act="quitarfiltro" data-campo="'+campo+'" aria-label="Quitar filtro">✕</button></div>';
 }
 
 // ---- render ----
@@ -476,7 +526,9 @@ function monthPicker(){
 
 function vResumen(){
   const mk=ui.month, pk=prevMonth(mk);
-  const ing=sum(ingresosDe(mk)), gas=sum(gastosDe(mk)), bal=ing-gas;
+  const fCat=ui.filtro.cat;
+  const todosGastos=gastosDe(mk), gastosF=fCat?todosGastos.filter(m=>m.categoria===fCat):todosGastos;
+  const ing=sum(ingresosDe(mk)), gasTotal=sum(todosGastos), gas=sum(gastosF), bal=ing-gasTotal;
   const tasa=ing?bal/ing*100:0;
   const activos=sum(state.inversiones.map(i=>({monto:valorHoy(i)})));
   const deudas=sum(state.tarjetas.map(t=>({monto:t.saldo})));
@@ -486,23 +538,27 @@ function vResumen(){
   const gan=invVal-invInv;
   // tendencia 6 meses
   const months=[];const d=mkDate(mk);for(let i=5;i>=0;i--){months.push(dYM(new Date(d.getFullYear(),d.getMonth()-i,1)));}
-  const tr=months.map(k=>({k,in:sum(ingresosDe(k)),out:sum(gastosDe(k))}));
+  const tr=months.map(k=>({k,in:sum(ingresosDe(k)),
+    out:sum(fCat?gastosDe(k).filter(m=>m.categoria===fCat):gastosDe(k))}));
   const mx=Math.max(1,...tr.flatMap(t=>[t.in,t.out]));
-  const gPrev=sum(gastosDe(pk));
-  const top=gastosDe(mk).slice().sort((a,b)=>b.monto-a.monto).slice(0,5);
+  const gPrev=sum(fCat?gastosDe(pk).filter(m=>m.categoria===fCat):gastosDe(pk));
+  const top=gastosF.slice().sort((a,b)=>b.monto-a.monto).slice(0,5);
   const saldos=tarjetaSaldos();
 
   return '<div class="topbar"><h1>Resumen</h1>'+monthPicker()+'</div>'
+  +chipFiltro("cat","Categoría")
   +'<div class="tiles">'
    +'<div class="tile hero"><div class="lbl">Patrimonio neto</div><div class="big num">'+fmt.format(pat)+'</div>'
      +'<div class="sub"><span class="delta up">'+fmt.format(activos)+'</span> en activos · <span class="delta '+(deudas?"down":"")+'">'+fmt.format(deudas)+'</span> en tarjetas</div></div>'
    +tile("Ingresos de "+mesNombre(mk),fmt.format(ing))
-   +tile("Gastos de "+mesNombre(mk),fmt.format(gas),(gas>=gPrev?"+":"−")+fmt.format(Math.abs(gas-gPrev))+" vs mes previo")
-   +tile("Balance / ahorro",fmt.format(bal),fmt2.format(tasa)+"% de tasa de ahorro",bal>=0?"pos":"neg")
+   +tile("Gastos de "+mesNombre(mk)+(fCat?" · "+fCat:""),fmt.format(gas),(gas>=gPrev?"+":"−")+fmt.format(Math.abs(gas-gPrev))+" vs mes previo")
+   +(fCat // con un filtro puesto, ingresos menos un gasto parcial no es un balance
+     ?tile("Peso en el gasto del mes",(gasTotal?fmt2.format(gas/gasTotal*100):"0")+"%","de "+fmt.format(gasTotal)+" gastados")
+     :tile("Balance / ahorro",fmt.format(bal),fmt2.format(tasa)+"% de tasa de ahorro",bal>=0?"pos":"neg"))
   +'</div>'
   +'<div class="grid2">'
    +'<div class="panel"><h2>Gasto por categoría <span class="aside">'+mk+'</span></h2>'
-     +'<div class="donutwrap">'+donut(catParts.map(p=>({v:p.v,c:p.c})))+legend(catParts)+'</div></div>'
+     +'<div class="donutwrap">'+donut(catParts,"cat")+legend(catParts,"cat")+'</div></div>'
    +'<div class="panel"><h2>Ingresos vs gastos <span class="aside">6 meses</span></h2>'
      +'<div class="bars">'+tr.map(t=>'<div class="bargroup" title="'+t.k+'"><div class="bar in" style="height:'+(t.in/mx*100)+'%"></div><div class="bar out" style="height:'+(t.out/mx*100)+'%"></div></div>').join("")+'</div>'
      +'<div class="barlabels">'+tr.map(t=>'<span>'+t.k.slice(5)+'</span>').join("")+'</div>'
@@ -518,7 +574,7 @@ function vResumen(){
        :'<div class="hint">Sin tarjetas registradas.</div>')
    +'</div>'
   +'</div>'
-  +'<div class="sectionhead"><h2>Mayores gastos del mes</h2></div>'
+  +'<div class="sectionhead"><h2>Mayores gastos del mes'+(fCat?" · "+esc(fCat):"")+'</h2></div>'
   +(top.length?tbl(["Fecha","Descripción","Categoría","Monto"],top.map(m=>['<span class="num">'+m.fecha.slice(5)+'</span>',esc(m.descripcion||"—"),'<span class="tag">'+esc(m.categoria)+'</span>','<span class="num">'+fmt.format(m.monto)+'</span>']),[0,0,0,1])
     :'<div class="empty">Nada registrado en '+mk+'.</div>');
 }
@@ -539,11 +595,16 @@ function medioOptions(sel,soloCuentas){
 function catOptions(sel){return CATS.map(c=>'<option'+(sel===c?" selected":"")+'>'+c+'</option>').join("");}
 
 function vGastos(){
-  const mk=ui.month, list=gastosDe(mk).slice().sort((a,b)=>a.fecha<b.fecha?1:-1);
+  const mk=ui.month, fCat=ui.filtro.cat, todos=gastosDe(mk);
+  const list=(fCat?todos.filter(m=>m.categoria===fCat):todos).slice().sort((a,b)=>a.fecha<b.fecha?1:-1);
+  const partes=CATS.map(c=>({n:c,c:CCOL[c],v:sum(todos.filter(m=>m.categoria===c))}));
   const e=ui.editId?state.movimientos.find(m=>m.id===ui.editId):null;
   const gmailBtn=mcpNS===null?'<button class="btn ghost sm" disabled title="Conecta Gmail en claude.ai → Conectores">Sincronizar Gmail</button>'
     :'<button class="btn ghost sm" data-act="gmail" data-kind="gasto">Sincronizar Gmail</button>';
   return '<div class="topbar"><h1>Gastos</h1>'+monthPicker()+'</div>'
+  +chipFiltro("cat","Categoría")
+  +(sum(todos)?'<div class="panel" style="margin-bottom:18px"><h2>Gasto por categoría <span class="aside">'+mk+'</span></h2>'
+     +'<div class="donutwrap">'+donut(partes,"cat")+legend(partes,"cat")+'</div></div>':"")
   +'<form class="formcard" data-form="gasto"><div class="formrow">'
    +fld("Fecha",'<input type="date" name="fecha" required value="'+esc(e?e.fecha:todayISO())+'">')
    +fld("Descripción",'<input name="descripcion" placeholder="Ej. Mercado del mes" value="'+esc(e?e.descripcion:"")+'">',"grow")
@@ -555,7 +616,7 @@ function vGastos(){
    +(e?'<button class="btn ghost" type="button" data-act="canceledit">Cancelar</button>':"")
   +'</div>'+(e&&e.imagen?'<div class="hint">Recibo adjunto <img class="thumb" src="'+e.imagen+'" data-act="zoom"> <button type="button" class="rowbtn" data-act="rmimg">quitar</button></div>':"")
   +'<div class="hint">Si eliges una cuenta, su saldo baja al guardar. Con tarjeta sube la deuda y la plata sale después, cuando la pagues.</div></form>'
-  +'<div class="sectionhead"><h2>Movimientos de '+mk+' · '+fmt.format(sum(list))+'</h2>'+gmailBtn+'</div>'
+  +'<div class="sectionhead"><h2>Movimientos de '+mk+(fCat?" · "+esc(fCat):"")+' · '+fmt.format(sum(list))+'</h2>'+gmailBtn+'</div>'
   +(list.length?tbl(["Fecha","Descripción","Categoría","Medio","","Monto",""],list.map(m=>[
      '<span class="num">'+m.fecha.slice(5)+'</span>',
      esc(m.descripcion||"—")+(m.fuente==="gmail"?' <span class="tag">gmail</span>':""),
@@ -573,20 +634,26 @@ function medioNombre(id){
 }
 function fld(l,inner,cls){return '<div class="fld '+(cls||"")+'"><label>'+esc(l)+'</label>'+inner+'</div>';}
 
+const CATS_ING=["Salario","Negocio","Dividendos","Intereses","Freelance","Otros"];
 function vIngresos(){
-  const mk=ui.month, list=ingresosDe(mk).slice().sort((a,b)=>a.fecha<b.fecha?1:-1);
+  const mk=ui.month, fCat=ui.filtro.cat, todos=ingresosDe(mk);
+  const list=(fCat?todos.filter(m=>m.categoria===fCat):todos).slice().sort((a,b)=>a.fecha<b.fecha?1:-1);
+  const partes=CATS_ING.map((c,i)=>({n:c,c:"var(--c"+(i+1)+")",v:sum(todos.filter(m=>m.categoria===c))}));
   const e=ui.editId?state.movimientos.find(m=>m.id===ui.editId):null;
   return '<div class="topbar"><h1>Ingresos</h1>'+monthPicker()+'</div>'
+  +chipFiltro("cat","Categoría")
+  +(sum(todos)?'<div class="panel" style="margin-bottom:18px"><h2>Ingresos por fuente <span class="aside">'+mk+'</span></h2>'
+     +'<div class="donutwrap">'+donut(partes,"cat")+legend(partes,"cat")+'</div></div>':"")
   +'<form class="formcard" data-form="ingreso"><div class="formrow">'
    +fld("Fecha",'<input type="date" name="fecha" required value="'+esc(e?e.fecha:todayISO())+'">')
    +fld("Fuente",'<input name="descripcion" placeholder="Ej. Salario, dividendos, freelance" value="'+esc(e?e.descripcion:"")+'">',"grow")
-   +fld("Categoría",'<select name="categoria"><option>Salario</option><option>Negocio</option><option>Dividendos</option><option>Intereses</option><option>Freelance</option><option>Otros</option></select>')
+   +fld("Categoría",'<select name="categoria">'+CATS_ING.map(c=>'<option'+(e&&e.categoria===c?" selected":"")+'>'+c+'</option>').join("")+'</select>')
    +fld("Entra a",'<select name="medio">'+medioOptions(e?e.medio:"",true)+'</select>')
    +fld("Monto (COP)",'<input class="num" name="monto" inputmode="numeric" required value="'+(e?e.monto:"")+'">')
    +'<button class="btn" type="submit">'+(e?"Guardar cambios":"Agregar")+'</button>'
    +(e?'<button class="btn ghost" type="button" data-act="canceledit">Cancelar</button>':"")
   +'</div><div class="hint">Si eliges la cuenta donde cae el ingreso, su saldo sube al guardar.</div></form>'
-  +'<div class="sectionhead"><h2>Ingresos de '+mk+' · '+fmt.format(sum(list))+'</h2>'
+  +'<div class="sectionhead"><h2>Ingresos de '+mk+(fCat?" · "+esc(fCat):"")+' · '+fmt.format(sum(list))+'</h2>'
    +(mcpNS===null?'':'<button class="btn ghost sm" data-act="gmail" data-kind="ingreso">Sincronizar Gmail</button>')+'</div>'
   +(list.length?tbl(["Fecha","Fuente","Categoría","Entra a","Monto",""],list.map(m=>[
      '<span class="num">'+m.fecha.slice(5)+'</span>',esc(m.descripcion||"—"),'<span class="tag">'+esc(m.categoria||"—")+'</span>',
@@ -600,16 +667,19 @@ function vInv(){
   const e=ui.editId?state.inversiones.find(i=>i.id===ui.editId):null;
   const tipoForm=ui.invTipo||(e?e.tipo:"cuenta"); // el formulario cambia según el tipo
   const fija=tipoForm!=="accion";
-  const tot=sum(state.inversiones.map(i=>({monto:valorHoy(i)})))||1;
-  const byType=["cuenta","cdt","accion"].map(t=>({n:INVLBL[t],c:INVCOL[t],
+  const tot=sum(state.inversiones.map(i=>({monto:valorHoy(i)})))||1; // peso siempre contra el portafolio completo
+  const byType=["cuenta","efectivo","cdt","accion"].map(t=>({n:INVLBL[t],c:INVCOL[t],
     v:sum(state.inversiones.filter(i=>i.tipo===t).map(i=>({monto:valorHoy(i)})))}));
-  const fijas=state.inversiones.filter(esFija).sort((a,b)=>valorHoy(b)-valorHoy(a));
-  const acciones=state.inversiones.filter(i=>!esFija(i)).sort((a,b)=>valorHoy(b)-valorHoy(a));
-  const totAportado=sum(state.inversiones.map(i=>({monto:aportadoDe(i)})));
-  const totValor=sum(state.inversiones.map(i=>({monto:valorHoy(i)})));
+  // El filtro por tipo recalcula totales y tablas, no solo el listado
+  const fInv=ui.filtro.inv, tipoDe=i=>INVLBL[i.tipo]||"Otros";
+  const visibles=fInv?state.inversiones.filter(i=>tipoDe(i)===fInv):state.inversiones;
+  const fijas=visibles.filter(esFija).sort((a,b)=>valorHoy(b)-valorHoy(a));
+  const acciones=visibles.filter(i=>!esFija(i)).sort((a,b)=>valorHoy(b)-valorHoy(a));
+  const totAportado=sum(visibles.map(i=>({monto:aportadoDe(i)})));
+  const totValor=sum(visibles.map(i=>({monto:valorHoy(i)})));
   // ganancia total = lo que vale hoy menos lo que pusiste, así incluye el efecto del dólar
   const totGanancia=totValor-totAportado;
-  const totFx=Math.round(sum(state.inversiones.map(i=>({monto:efectoDolar(i)}))));
+  const totFx=Math.round(sum(visibles.map(i=>({monto:efectoDolar(i)}))));
 
   const monedaForm=ui.invMoneda||(e?(e.moneda||"COP"):"COP");
   const usd=monedaForm==="USD", suf=usd?" (USD)":"";
@@ -636,6 +706,7 @@ function vInv(){
    +(usd?fld("TRM al invertir",'<input class="num" name="trmEntrada" inputmode="decimal" required value="'+(e&&e.aportadoCOP&&aportadoNativo(e)?Math.round(e.aportadoCOP/aportadoNativo(e)):Math.round(TRM()))+'">'):"");
 
   return '<div class="topbar"><h1>Inversiones y cuentas</h1></div>'
+  +chipFiltro("inv","Tipo")
   +'<form class="formcard" data-form="inv"><div class="formrow">'
    +fld("Nombre",'<input name="nombre" placeholder="Ej. Cuenta Nu, CDT Bancolombia, TIN" required value="'+esc(e?e.nombre:"")+'">',"grow")
    +fld("Tipo",'<select name="tipo" data-act="invtipo">'
@@ -650,7 +721,8 @@ function vInv(){
      ? 'El valor de hoy se estima con la tasa desde la fecha del saldo. Cuando confirmes el saldo real en tu banco, usa «Actualizar saldo».'
      : 'El valor actual lo actualiza el agente mensual, o tú con la foto de tu portafolio.')+'</div></form>'
 
-  +'<div class="grid2"><div class="panel"><h2>Distribución por tipo</h2><div class="donutwrap">'+donut(byType.map(p=>({v:p.v,c:p.c})))+legend(byType)+'</div></div>'
+  +'<div class="grid2"><div class="panel"><h2>Distribución por tipo <span class="aside">clic para filtrar</span></h2>'
+   +'<div class="donutwrap">'+donut(byType,"inv")+legend(byType,"inv")+'</div></div>'
    +'<div class="panel"><h2>Totales</h2>'
      +row2("Aportado / invertido",fmt.format(totAportado))
      +row2("Valor hoy",fmt.format(totValor))
@@ -660,9 +732,11 @@ function vInv(){
    +'</div></div>'
 
   +(state.inversiones.some(esUSD)?'<div class="panel" style="margin-bottom:16px">'
-     +row2("Dólar usado para convertir (TRM)",fmt.format(TRM())+' <span class="hint">del '+esc(state.config.trmFecha||"—")+'</span>')
+     +(trmPendiente()?'<div class="msg warn">Aún no has confirmado el dólar de hoy. Mientras tanto se usa la TRM a la que compraste, así que el efecto cambiario aparece en cero. Actualízala para ver tu posición en dólares a valor real.</div>':"")
+     +row2("Dólar usado para convertir (TRM)",fmt.format(TRM())
+        +(trmPendiente()?' <span class="hint" style="color:var(--warn)">sin confirmar</span>':' <span class="hint">del '+esc(state.config.trmFecha||"—")+'</span>'))
      +'<div style="margin-top:10px"><button class="btn ghost sm" data-act="trm">Actualizar TRM</button></div></div>':"")
-  +'<div class="sectionhead"><h2>Cuentas, efectivo y CDT</h2>'
+  +(fijas.length||!fInv?'<div class="sectionhead"><h2>Cuentas, efectivo y CDT'+(fInv?" · "+esc(fInv):"")+'</h2>'
    +'<button class="btn ghost sm" data-act="mover">Mover plata / retirar efectivo</button></div>'
   +(fijas.length?tbl(["Nombre","Saldo base","Tasa E.A.","Interés ganado","Valor hoy","Peso",""],fijas.map(i=>{
       // en un CDT el capital está quieto: la estimación es exacta y no hay nada que confirmar
@@ -685,7 +759,7 @@ function vInv(){
        +'<button class="rowbtn" data-act="editinv" data-id="'+i.id+'">editar</button>'
        +'<button class="rowbtn" data-act="delinv" data-id="'+i.id+'">✕</button>'];
     }),[0,1,1,1,1,1,1])
-   :'<div class="empty">Agrega tus cuentas de ahorro y CDT arriba, con su tasa E.A.</div>')
+   :'<div class="empty">Agrega tus cuentas de ahorro y CDT arriba, con su tasa E.A.</div>'):"")
 
   +(function(){
      const tr=state.movimientos.filter(m=>m.tipo==="traslado").sort((a,b)=>a.fecha<b.fecha?1:-1).slice(0,10);
@@ -696,7 +770,7 @@ function vInv(){
         '<span class="num">'+fmt.format(m.monto)+'</span>',
         '<button class="rowbtn" data-act="del" data-id="'+m.id+'">✕</button>']),[0,0,0,1,1]);
    })()
-  +'<div class="sectionhead"><h2>Acciones y fondos</h2></div>'
+  +(acciones.length||!fInv?'<div class="sectionhead"><h2>Acciones y fondos</h2></div>'
   +(acciones.length?tbl(["Nombre","Invertido","Valor actual","Ganancia","Rend.","Peso",""],acciones.map(i=>{
       const inv=+i.montoInvertido||0, act=+i.valorActual||0, gan=act-inv;
       const r=inv?gan/inv*100:0;
@@ -713,7 +787,7 @@ function vInv(){
        '<span class="num">'+(valorHoy(i)/tot*100).toFixed(0)+'%</span>',
        '<button class="rowbtn" data-act="editinv" data-id="'+i.id+'">editar</button><button class="rowbtn" data-act="delinv" data-id="'+i.id+'">✕</button>'];
     }),[0,1,1,1,1,1,1])
-   :'<div class="empty">Sin acciones ni fondos registrados.</div>');
+   :'<div class="empty">Sin acciones ni fondos registrados.</div>'):"");
 }
 
 // Mover plata entre cuentas propias. No es gasto ni ingreso: la plata sigue
@@ -849,7 +923,7 @@ function vTarj(){
 document.addEventListener("click",e=>{
   const a=e.target.closest("[data-act]");if(!a)return;
   const act=a.dataset.act;
-  if(act==="zoom"||act==="nav"||act==="gmail"||act==="pagar"||act==="mover"||act==="trm")e.preventDefault();
+  if(["zoom","nav","gmail","pagar","mover","trm","filtro","quitarfiltro"].includes(act))e.preventDefault();
   switch(act){
     case"nav":ui.section=a.dataset.s;ui.editId=null;render();break;
     case"canceledit":ui.editId=null;ui.invTipo=null;ui.invMoneda=null;render();break;
@@ -860,10 +934,14 @@ document.addEventListener("click",e=>{
       ui.section="inversiones";render();scrollTo(0,0);break;}
     case"actsaldo":actualizarSaldo(a.dataset.id);break;
     case"mover":moverPlata();break;
+    case"filtro":{const c=a.dataset.campo,v=a.dataset.valor;
+      ui.filtro[c]=ui.filtro[c]===v?null:v; // volver a hacer clic lo quita
+      render();break;}
+    case"quitarfiltro":ui.filtro[a.dataset.campo]=null;render();break;
     case"trm":{const v=prompt("¿A cuánto está el dólar hoy? (TRM en pesos)",String(Math.round(TRM())));
       if(v==null)break;
       const n=Math.round(parseFloat(String(v).replace(/[^\d,.-]/g,"").replace(/\.(?=\d{3}\b)/g,"").replace(",","."))||0);
-      if(n>0){state.config.trm=n;state.config.trmFecha=todayISO();commit();}
+      if(n>0){state.config.trm=n;state.config.trmFecha=todayISO();state.config.trmConfirmada=true;commit();}
       break;}
     case"edittarj":ui.editId=a.dataset.id;ui.section="tarjetas";render();scrollTo(0,0);break;
     case"del":if(confirm("¿Eliminar este movimiento?")){state.movimientos=state.movimientos.filter(m=>m.id!==a.dataset.id);commit();}break;
@@ -879,6 +957,12 @@ document.addEventListener("click",e=>{
     case"gmail":gmailSync(a.dataset.kind);break;
     case"closemodal":closeModal();break;
   }
+});
+document.addEventListener("keydown",e=>{ // las porciones son focusables: deben responder al teclado
+  if(e.key!=="Enter"&&e.key!==" ")return;
+  const a=e.target.closest&&e.target.closest('[data-act="filtro"]');
+  if(!a)return; e.preventDefault();
+  const c=a.dataset.campo,v=a.dataset.valor; ui.filtro[c]=ui.filtro[c]===v?null:v; render();
 });
 document.addEventListener("change",e=>{
   const s=e.target.closest('select[data-act="month"]');if(s){ui.month=s.value;ui.mesElegido=true;ui.editId=null;render();}
