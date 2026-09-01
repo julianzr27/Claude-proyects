@@ -363,7 +363,9 @@ function billeteraEfectivo(){ // se crea sola la primera vez que se necesita
 // Para pagar el día a día solo sirven las cuentas en pesos y el efectivo;
 // una posición en dólares es inversión, no medio de pago.
 const cuentasDisponibles=()=>state.inversiones.filter(c=>esCuenta(c)&&!esUSD(c));
-const cuentasParaTraslado=()=>state.inversiones.filter(esCuenta); // aquí sí, para registrar que invertiste
+// Los traslados alcanzan a todo lo que lleva saldo: incluye el CDT, porque al
+// vencer la plata vuelve a una cuenta y eso es un movimiento, no una ganancia.
+const cuentasParaTraslado=()=>state.inversiones.filter(esFija);
 // ponytail: el interés se calcula sobre el saldo anclado, ignorando los movimientos
 // del periodo. Se corrige al confirmar el saldo real; si algún día importa la
 // precisión intermedia, habría que capitalizar día a día sobre el saldo corriente.
@@ -627,6 +629,10 @@ function vInv(){
             +'<input class="num" name="rent" inputmode="decimal" placeholder="Ej. 12,4" required style="min-width:90px">'
             +'<select name="rentUnidad" style="min-width:70px"><option value="pct">%</option><option value="abs">'+(usd?"US$":"$")+'</option></select></div>'))
      +fld("Fecha de compra",'<input type="date" name="fechaCompra" value="'+esc(e?(e.fechaCompra||""):"")+'">'))
+   +(e?"":fld("El dinero sale de",'<select name="origen">'
+      +'<option value="">Ya lo tenía / viene de afuera</option>'
+      +cuentasDisponibles().map(c=>'<option value="'+c.id+'">'+esc(c.nombre)+' · '+fmt.format(valorHoy(c))+'</option>').join("")
+      +'</select>',"grow"))
    +(usd?fld("TRM al invertir",'<input class="num" name="trmEntrada" inputmode="decimal" required value="'+(e&&e.aportadoCOP&&aportadoNativo(e)?Math.round(e.aportadoCOP/aportadoNativo(e)):Math.round(TRM()))+'">'):"");
 
   return '<div class="topbar"><h1>Inversiones y cuentas</h1></div>'
@@ -930,8 +936,19 @@ document.addEventListener("submit",async e=>{
       ui.editId=null;
     }else{
       rec.id=uid();
-      if(d.tipo!=="accion"){rec.aportado=rec.saldo;rec.interesAcumulado=0;rec.anclaTs=Date.now();} // el saldo inicial es capital, no ganancia
+      // Si la plata sale de una cuenta, se registra el traslado y se ancla la
+      // posición nueva en ese mismo instante: así el traslado descuenta el
+      // origen pero no vuelve a sumar en el destino, que ya trae su saldo.
+      const origen=d.origen&&state.inversiones.find(x=>x.id===d.origen)?d.origen:"";
+      const t=Date.now();
+      if(d.tipo!=="accion"){rec.aportado=rec.saldo;rec.interesAcumulado=0;rec.anclaTs=t;} // el saldo inicial es capital, no ganancia
       state.inversiones.push(rec);
+      if(origen){
+        const enCOP=usdRec?rec.aportadoCOP:(d.tipo==="accion"?rec.montoInvertido:rec.saldo);
+        if(enCOP>0)state.movimientos.push({id:uid(),ts:t,fecha:rec.fechaSaldo||rec.fechaCompra||todayISO(),
+          tipo:"traslado",desde:origen,hacia:rec.id,monto:Math.round(enCOP),
+          descripcion:"Apertura "+rec.nombre,fuente:"manual"});
+      }
     }
     ui.invTipo=null;ui.invMoneda=null; f.reset();commit();
   }else if(kind==="tarjeta"){
