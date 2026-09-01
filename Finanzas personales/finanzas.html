@@ -194,6 +194,8 @@ const INVLBL={accion:"Acciones",cuenta:"Cuentas",cdt:"CDT",efectivo:"Efectivo"};
 const fmt=new Intl.NumberFormat("es-CO",{style:"currency",currency:"COP",maximumFractionDigits:0});
 const fmt2=new Intl.NumberFormat("es-CO",{maximumFractionDigits:1});
 const fmtTasa=new Intl.NumberFormat("es-CO",{maximumFractionDigits:2}); // 9,25% no debe verse como 9,3%
+const fmtUSD=new Intl.NumberFormat("es-CO",{style:"currency",currency:"USD",maximumFractionDigits:2});
+const fmtMon=(v,i)=>esUSD(i)?fmtUSD.format(v):fmt.format(v);
 const uid=()=>Math.random().toString(36).slice(2,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const $=s=>document.querySelector(s);
@@ -208,12 +210,15 @@ const mesNombre=mk=>MESES[+mk.slice(5,7)-1]||mk;
 
 // ---- state ----
 let state=defaults();
-function defaults(){return{v:1,config:{moneda:"COP"},tarjetas:[],inversiones:[],movimientos:[]};}
+function defaults(){return{v:1,config:{moneda:"COP",trm:4000,trmFecha:todayISO()},tarjetas:[],inversiones:[],movimientos:[]};}
 function load(){
   try{
     const raw=JSON.parse($("#datos").textContent);
     if(raw&&!raw.seed&&Array.isArray(raw.movimientos)){
       state=Object.assign(defaults(),raw);
+      // config se fusiona, no se reemplaza: datos guardados antes de la TRM
+      // llegan sin ella y dejarían la conversión a dólares en cero.
+      state.config=Object.assign(defaults().config,raw.config||{});
       state.tarjetas||=[];state.inversiones||=[];state.movimientos||=[];
       migrarInversiones();
     }
@@ -355,7 +360,10 @@ function billeteraEfectivo(){ // se crea sola la primera vez que se necesita
     state.inversiones.push(b);}
   return b;
 }
-const cuentasDisponibles=()=>state.inversiones.filter(esCuenta);
+// Para pagar el día a día solo sirven las cuentas en pesos y el efectivo;
+// una posición en dólares es inversión, no medio de pago.
+const cuentasDisponibles=()=>state.inversiones.filter(c=>esCuenta(c)&&!esUSD(c));
+const cuentasParaTraslado=()=>state.inversiones.filter(esCuenta); // aquí sí, para registrar que invertiste
 // ponytail: el interés se calcula sobre el saldo anclado, ignorando los movimientos
 // del periodo. Se corrige al confirmar el saldo real; si algún día importa la
 // precisión intermedia, habría que capitalizar día a día sobre el saldo corriente.
@@ -365,12 +373,39 @@ function interesCausado(i){ // interés estimado desde el último saldo confirma
   const dias=hasta?diasEntre(i.fechaSaldo,hasta):diasEntre(i.fechaSaldo);
   return capitaliza(+i.saldo||0,i.tasaEA,dias)-(+i.saldo||0);
 }
-// lo que vale hoy una posición: ancla + interés + lo que se haya movido desde entonces
-function valorHoy(i){return esFija(i)?(+i.saldo||0)+interesCausado(i)+movNeto(i.id,i.fechaSaldo,i.anclaTs):(+i.valorActual||0);}
-// capital neto puesto por Julián: para renta fija son los aportes, para acciones lo invertido
-function aportadoDe(i){return esFija(i)?(+i.aportado||0)+movNeto(i.id,i.fechaSaldo,i.anclaTs):(+i.montoInvertido||0);}
-// todo lo ganado: lo ya reconocido al actualizar saldos + lo que se ha causado desde entonces
+// ---- posiciones en dólares ----
+// Se guardan en su moneda y una sola TRM las convierte a pesos para los totales.
+// Así se distingue lo que rindió el activo de lo que se movió el dólar.
+const TRM=()=>+state.config.trm||1;
+const esUSD=i=>i&&i.moneda==="USD";
+const aCOP=(v,i)=>esUSD(i)?v*TRM():v;
+// los movimientos se registran en pesos; para una posición en dólares se convierten
+function movNetoNativo(i){const c=movNeto(i.id,i.fechaSaldo,i.anclaTs);return esUSD(i)?c/TRM():c;}
+
+// valor en la moneda de la posición: ancla + interés + lo movido desde entonces
+function valorNativo(i){return esFija(i)?(+i.saldo||0)+interesCausado(i)+movNetoNativo(i):(+i.valorActual||0);}
+function aportadoNativo(i){return esFija(i)?(+i.aportado||0)+movNetoNativo(i):(+i.montoInvertido||0);}
+// lo que vale hoy, siempre en pesos, que es la moneda de los totales
+function valorHoy(i){return aCOP(valorNativo(i),i);}
+// capital puesto: para una posición en dólares son los pesos que realmente salieron
+function aportadoDe(i){
+  if(esUSD(i))return (+i.aportadoCOP||0)+(esFija(i)?movNeto(i.id,i.fechaSaldo,i.anclaTs):0);
+  return aportadoNativo(i);
+}
+// lo ganado por el activo, en su propia moneda
 function interesTotal(i){return esFija(i)?(+i.interesAcumulado||0)+interesCausado(i):(+i.valorActual||0)-(+i.montoInvertido||0);}
+// ganancia partida en dos: la del activo y la que aportó el movimiento del dólar
+function gananciaActivoCOP(i){return aCOP(valorNativo(i)-aportadoNativo(i),i);}
+function efectoDolar(i){return esUSD(i)?(valorHoy(i)-aportadoDe(i))-gananciaActivoCOP(i):0;}
+// Rentabilidad llevada a base anual, para poder compararla con la tasa E.A. de
+// una cuenta o un CDT. Sin fecha de compra no hay periodo y no se puede anualizar.
+function anualizado(i){
+  const inv=+i.montoInvertido||0, act=+i.valorActual||0;
+  if(!i.fechaCompra||inv<=0||act<=0)return null;
+  const dias=diasEntre(i.fechaCompra);
+  if(dias<30)return null; // en pocos días la anualización se dispara y engaña
+  return (Math.pow(act/inv,365/dias)-1)*100;
+}
 function valorAlVencimiento(i){
   if(i.tipo!=="cdt"||!i.vencimiento)return null;
   return capitaliza(+i.saldo||0,i.tasaEA,diasEntre(i.fechaSaldo,diaISO(i.vencimiento)));
@@ -379,7 +414,7 @@ const diasSinConfirmar=i=>esFija(i)?diasEntre(i.fechaSaldo):diasEntre(i.fechaAct
 const DESACTUALIZADA=30;
 // Plata disponible para pagar tarjetas: cuentas de ahorro. Un CDT no cuenta,
 // está inmovilizado hasta el vencimiento.
-const liquidez=()=>sum(state.inversiones.filter(esCuenta).map(i=>({monto:valorHoy(i)})));
+const liquidez=()=>sum(cuentasDisponibles().map(i=>({monto:valorHoy(i)})));
 
 function patrimonio(){return sum(state.inversiones.map(i=>({monto:valorHoy(i)})))-sum(state.tarjetas.map(t=>({monto:t.saldo})));}
 function tarjetaSaldos(){ // recompute from movimientos so imports/edits stay consistent
@@ -446,7 +481,7 @@ function vResumen(){
   const pat=activos-deudas;
   const catParts=CATS.map(c=>({n:c,c:CCOL[c],v:sum(gastosDe(mk).filter(m=>m.categoria===c))}));
   const invInv=sum(state.inversiones.map(i=>({monto:aportadoDe(i)}))), invVal=sum(state.inversiones.map(i=>({monto:valorHoy(i)})));
-  const gan=sum(state.inversiones.map(i=>({monto:interesTotal(i)})));
+  const gan=invVal-invInv;
   // tendencia 6 meses
   const months=[];const d=mkDate(mk);for(let i=5;i>=0;i--){months.push(dYM(new Date(d.getFullYear(),d.getMonth()-i,1)));}
   const tr=months.map(k=>({k,in:sum(ingresosDe(k)),out:sum(gastosDe(k))}));
@@ -570,15 +605,29 @@ function vInv(){
   const acciones=state.inversiones.filter(i=>!esFija(i)).sort((a,b)=>valorHoy(b)-valorHoy(a));
   const totAportado=sum(state.inversiones.map(i=>({monto:aportadoDe(i)})));
   const totValor=sum(state.inversiones.map(i=>({monto:valorHoy(i)})));
-  const totGanancia=sum(state.inversiones.map(i=>({monto:interesTotal(i)})));
+  // ganancia total = lo que vale hoy menos lo que pusiste, así incluye el efecto del dólar
+  const totGanancia=totValor-totAportado;
+  const totFx=Math.round(sum(state.inversiones.map(i=>({monto:efectoDolar(i)}))));
 
-  const campos=fija
-    ? fld("Saldo hoy",'<input class="num" name="saldo" inputmode="numeric" required value="'+(e?e.saldo:"")+'">')
+  const monedaForm=ui.invMoneda||(e?(e.moneda||"COP"):"COP");
+  const usd=monedaForm==="USD", suf=usd?" (USD)":"";
+  const campos=fld("Moneda",'<select name="moneda" data-act="invmoneda">'
+      +'<option value="COP"'+(usd?"":" selected")+'>Pesos</option>'
+      +'<option value="USD"'+(usd?" selected":"")+'>Dólares</option></select>')
+   +(fija
+    ? fld("Saldo hoy"+suf,'<input class="num" name="saldo" inputmode="decimal" required value="'+(e?e.saldo:"")+'">')
       +fld("Fecha del saldo",'<input type="date" name="fechaSaldo" required value="'+esc(e?e.fechaSaldo:todayISO())+'">')
       +fld("Tasa E.A. (%)",'<input class="num" name="tasaEA" inputmode="decimal" placeholder="Ej. 11,5" required value="'+(e?e.tasaEA:"")+'">')
       +(tipoForm==="cdt"?fld("Vence el",'<input type="date" name="vencimiento" value="'+esc(e?e.vencimiento:"")+'">'):"")
-    : fld("Invertido",'<input class="num" name="montoInvertido" inputmode="numeric" required value="'+(e?e.montoInvertido:"")+'">')
-      +fld("Valor actual",'<input class="num" name="valorActual" inputmode="numeric" required value="'+(e?e.valorActual:"")+'">');
+    : (e // al crear se pide lo que muestra el broker; al editar, el costo ya está fijado
+       ? fld("Invertido"+suf,'<input class="num" name="montoInvertido" inputmode="decimal" required value="'+e.montoInvertido+'">')
+         +fld("Valor actual"+suf,'<input class="num" name="valorActual" inputmode="decimal" required value="'+e.valorActual+'">')
+       : fld("Valor actual"+suf,'<input class="num" name="valorActual" inputmode="decimal" required value="">')
+         +fld("Rentabilidad","<div style=\"display:flex;gap:6px\">"
+            +'<input class="num" name="rent" inputmode="decimal" placeholder="Ej. 12,4" required style="min-width:90px">'
+            +'<select name="rentUnidad" style="min-width:70px"><option value="pct">%</option><option value="abs">'+(usd?"US$":"$")+'</option></select></div>'))
+     +fld("Fecha de compra",'<input type="date" name="fechaCompra" value="'+esc(e?(e.fechaCompra||""):"")+'">'))
+   +(usd?fld("TRM al invertir",'<input class="num" name="trmEntrada" inputmode="decimal" required value="'+(e&&e.aportadoCOP&&aportadoNativo(e)?Math.round(e.aportadoCOP/aportadoNativo(e)):Math.round(TRM()))+'">'):"");
 
   return '<div class="topbar"><h1>Inversiones y cuentas</h1></div>'
   +'<form class="formcard" data-form="inv"><div class="formrow">'
@@ -600,9 +649,13 @@ function vInv(){
      +row2("Aportado / invertido",fmt.format(totAportado))
      +row2("Valor hoy",fmt.format(totValor))
      +row2("Ganancia acumulada",fmt.format(totGanancia)+" ("+(totAportado?fmt2.format(totGanancia/totAportado*100):"0")+"%)",totGanancia>=0?"pos":"neg")
+     +(totFx?row2("De eso, por el movimiento del dólar",fmt.format(totFx),totFx>=0?"pos":"neg"):"")
      +'<div class="hint">La ganancia de cuentas y CDT es interés causado; el de acciones es valorización.</div>'
    +'</div></div>'
 
+  +(state.inversiones.some(esUSD)?'<div class="panel" style="margin-bottom:16px">'
+     +row2("Dólar usado para convertir (TRM)",fmt.format(TRM())+' <span class="hint">del '+esc(state.config.trmFecha||"—")+'</span>')
+     +'<div style="margin-top:10px"><button class="btn ghost sm" data-act="trm">Actualizar TRM</button></div></div>':"")
   +'<div class="sectionhead"><h2>Cuentas, efectivo y CDT</h2>'
    +'<button class="btn ghost sm" data-act="mover">Mover plata / retirar efectivo</button></div>'
   +(fijas.length?tbl(["Nombre","Saldo base","Tasa E.A.","Interés ganado","Valor hoy","Peso",""],fijas.map(i=>{
@@ -610,15 +663,17 @@ function vInv(){
       const ganado=interesTotal(i), vHoy=valorHoy(i);
       const viejo=i.tipo==="cuenta"&&diasSinConfirmar(i)>=DESACTUALIZADA;
       const venc=valorAlVencimiento(i), dias=i.vencimiento?daysUntil(diaISO(i.vencimiento)):null;
+      const fx=efectoDolar(i);
       const detalle=(i.nota?esc(i.nota)+". ":"")
         +"Saldo del "+esc(i.fechaSaldo||"—")
-        +(venc!==null?" · vence "+esc(i.vencimiento)+(dias>0?" (en "+dias+" días, "+fmt.format(venc)+")":" (vencido)"):"");
+        +(venc!==null?" · vence "+esc(i.vencimiento)+(dias>0?" (en "+dias+" días, "+fmtMon(venc,i)+")":" (vencido)"):"")
+        +(esUSD(i)?" · rendimiento "+fmt.format(gananciaActivoCOP(i))+" y el dólar "+(fx>=0?"sumó ":"restó ")+fmt.format(Math.abs(fx)):"");
       return [esc(i.nombre)+(viejo?' <span class="tag" style="color:var(--warn)">sin confirmar hace '+diasSinConfirmar(i)+'d</span>':"")
         +'<div class="hint">'+detalle+'</div>',
-       '<span class="num">'+fmt.format(i.saldo||0)+'</span>',
+       '<span class="num">'+fmtMon(i.saldo||0,i)+'</span>',
        '<span class="num">'+fmtTasa.format(+i.tasaEA||0)+'%</span>',
-       '<span class="num val '+(ganado>=0?"pos":"neg")+'">'+fmt.format(ganado)+'</span>',
-       '<span class="num">'+fmt.format(vHoy)+'</span>',
+       '<span class="num val '+(ganado>=0?"pos":"neg")+'">'+fmtMon(ganado,i)+'</span>',
+       '<span class="num">'+fmt.format(vHoy)+(esUSD(i)?'<div class="hint">'+fmtUSD.format(valorNativo(i))+'</div>':"")+'</span>',
        '<span class="num">'+(vHoy/tot*100).toFixed(0)+'%</span>',
        '<button class="rowbtn" data-act="actsaldo" data-id="'+i.id+'">actualizar saldo</button>'
        +'<button class="rowbtn" data-act="editinv" data-id="'+i.id+'">editar</button>'
@@ -636,22 +691,29 @@ function vInv(){
         '<button class="rowbtn" data-act="del" data-id="'+m.id+'">✕</button>']),[0,0,0,1,1]);
    })()
   +'<div class="sectionhead"><h2>Acciones y fondos</h2></div>'
-  +(acciones.length?tbl(["Nombre","Invertido","Valor actual","Rend.","Peso",""],acciones.map(i=>{
-      const r=i.montoInvertido?(i.valorActual-i.montoInvertido)/i.montoInvertido*100:0;
+  +(acciones.length?tbl(["Nombre","Invertido","Valor actual","Ganancia","Rend.","Peso",""],acciones.map(i=>{
+      const inv=+i.montoInvertido||0, act=+i.valorActual||0, gan=act-inv;
+      const r=inv?gan/inv*100:0;
       const viejo=diasSinConfirmar(i)>=DESACTUALIZADA;
-      return [esc(i.nombre)+(viejo?' <span class="tag" style="color:var(--warn)">sin actualizar hace '+diasSinConfirmar(i)+'d</span>':"")+(i.nota?'<div class="hint">'+esc(i.nota)+'</div>':""),
-       '<span class="num">'+fmt.format(i.montoInvertido||0)+'</span>','<span class="num">'+fmt.format(i.valorActual||0)+'</span>',
+      const anual=anualizado(i), fx=efectoDolar(i);
+      const detalle=[i.nota?esc(i.nota):"",
+        i.fechaCompra?"Comprada el "+esc(i.fechaCompra)+(anual!==null?" · "+fmt2.format(anual)+"% anual equivalente":""):"",
+        esUSD(i)?"El dólar "+(fx>=0?"sumó ":"restó ")+fmt.format(Math.abs(fx)):""].filter(Boolean).join(" · ");
+      return [esc(i.nombre)+(viejo?' <span class="tag" style="color:var(--warn)">sin actualizar hace '+diasSinConfirmar(i)+'d</span>':"")
+        +(detalle?'<div class="hint">'+detalle+'</div>':""),
+       '<span class="num">'+fmtMon(inv,i)+'</span>','<span class="num">'+fmtMon(act,i)+'</span>',
+       '<span class="num val '+(gan>=0?"pos":"neg")+'">'+fmtMon(gan,i)+'</span>',
        '<span class="num val '+(r>=0?"pos":"neg")+'">'+fmt2.format(r)+'%</span>',
        '<span class="num">'+(valorHoy(i)/tot*100).toFixed(0)+'%</span>',
        '<button class="rowbtn" data-act="editinv" data-id="'+i.id+'">editar</button><button class="rowbtn" data-act="delinv" data-id="'+i.id+'">✕</button>'];
-    }),[0,1,1,1,1,1])
+    }),[0,1,1,1,1,1,1])
    :'<div class="empty">Sin acciones ni fondos registrados.</div>');
 }
 
 // Mover plata entre cuentas propias. No es gasto ni ingreso: la plata sigue
 // siendo tuya, solo cambia de sitio. Retirar efectivo es un traslado más.
 function moverPlata(){
-  const cuentas=cuentasDisponibles();
+  const cuentas=cuentasParaTraslado();
   if(cuentas.length<1){modal('<h2>Mover plata</h2><div class="msg warn">Primero registra al menos una cuenta en Inversiones.</div><div class="acts"><button class="btn ghost" data-act="closemodal">Cerrar</button></div>');return;}
   const opts=sel=>cuentas.map(c=>'<option value="'+c.id+'"'+(sel===c.id?" selected":"")+'>'+esc(c.nombre)+' · '+fmt.format(valorHoy(c))+'</option>').join("");
   const hayEfectivo=cuentas.some(c=>c.id===ID_EFECTIVO);
@@ -690,16 +752,19 @@ function moverPlata(){
 // con el número real del banco. Lo que sobra de la diferencia es aporte o retiro.
 function actualizarSaldo(id){
   const i=state.inversiones.find(x=>x.id===id); if(!i||!esFija(i))return;
-  const previsto=Math.round(interesCausado(i)), saldoAnt=+i.saldo||0, dias=diasEntre(i.fechaSaldo);
-  const registrado=Math.round(movNeto(i.id,i.fechaSaldo,i.anclaTs)); // gastos, ingresos y traslados ya anotados
-  const esperado=saldoAnt+registrado+previsto;
+  const red=v=>esUSD(i)?Math.round(v*100)/100:Math.round(v); // en dólares los centavos cuentan
+  const previsto=red(interesCausado(i)), saldoAnt=+i.saldo||0, dias=diasEntre(i.fechaSaldo);
+  const registrado=red(movNetoNativo(i)); // gastos, ingresos y traslados ya anotados
+  const esperado=red(saldoAnt+registrado+previsto);
+  const M=v=>fmtMon(v,i);
   modal('<h2>Actualizar '+esc(i.nombre)+'</h2>'
-   +'<p class="sub">Saldo confirmado: '+fmt.format(saldoAnt)+' el '+esc(i.fechaSaldo||"—")+' ('+dias+' días).</p>'
+   +'<p class="sub">Saldo confirmado: '+M(saldoAnt)+' el '+esc(i.fechaSaldo||"—")+' ('+dias+' días).</p>'
    +'<div class="panel" style="margin-bottom:14px">'
-     +row2("Saldo confirmado",fmt.format(saldoAnt))
-     +(registrado?row2("Movimientos registrados desde entonces",fmt.format(registrado),registrado>=0?"pos":"neg"):"")
-     +(previsto?row2("Interés estimado",fmt.format(previsto),"pos"):"")
-     +row2("El dashboard espera",fmt.format(esperado))
+     +row2("Saldo confirmado",M(saldoAnt))
+     +(registrado?row2("Movimientos registrados desde entonces",M(registrado),registrado>=0?"pos":"neg"):"")
+     +(previsto?row2("Interés estimado",M(previsto),"pos"):"")
+     +row2("El dashboard espera",M(esperado))
+     +(esUSD(i)?'<div class="hint">En pesos a la TRM de hoy ('+fmt.format(TRM())+'): '+fmt.format(esperado*TRM())+'</div>':"")
    +'</div>'
    +'<div class="formrow">'
     +fld("Saldo real hoy",'<input class="num" id="as-saldo" inputmode="numeric" value="'+esperado+'">')
@@ -709,13 +774,14 @@ function actualizarSaldo(id){
    +'<div class="msg warn" id="as-delta" style="margin-top:12px"></div>'
    +'<div class="acts"><button class="btn ghost" data-act="closemodal">Cancelar</button><button class="btn" id="as-go">Guardar</button></div>');
   const $s=$("#as-saldo"), $i=$("#as-interes"), $d=$("#as-delta");
-  const leer=v=>Math.round(parseFloat(String(v).replace(/[^\d,.-]/g,"").replace(/\.(?=\d{3}\b)/g,"").replace(",","."))||0);
+  const leer=v=>red(parseFloat(String(v).replace(/[^\d,.-]/g,"").replace(/\.(?=\d{3}\b)/g,"").replace(",","."))||0);
+  const minimo=esUSD(i)?0.01:1;
   function pintar(){
     const nuevo=leer($s.value), inter=leer($i.value), sinRegistrar=nuevo-saldoAnt-registrado-inter;
-    $d.textContent=Math.abs(sinRegistrar)<1
+    $d.textContent=Math.abs(sinRegistrar)<minimo
       ? "Todo cuadra con lo registrado más el interés."
-      : (sinRegistrar>0?"Sobran "+fmt.format(sinRegistrar)+": se anotan como entrada sin registrar."
-                       :"Faltan "+fmt.format(-sinRegistrar)+": se anotan como salida sin registrar.");
+      : (sinRegistrar>0?"Sobran "+M(sinRegistrar)+": se anotan como entrada sin registrar."
+                       :"Faltan "+M(-sinRegistrar)+": se anotan como salida sin registrar.");
   }
   $s.oninput=pintar; $i.oninput=pintar; pintar();
   $("#as-go").onclick=()=>{
@@ -723,6 +789,9 @@ function actualizarSaldo(id){
     // El nuevo ancla absorbe todo lo anterior: los movimientos ya contados quedan
     // dentro del saldo, así que el capital sube por ellos y por lo no registrado.
     i.aportado=(+i.aportado||0)+registrado+sinRegistrar;
+    // El costo en pesos sube por lo que realmente salió: lo registrado ya venía en
+    // pesos, y lo no registrado se convierte a la TRM de hoy.
+    if(esUSD(i))i.aportadoCOP=(+i.aportadoCOP||0)+movNeto(i.id,i.fechaSaldo,i.anclaTs)+sinRegistrar*TRM();
     i.interesAcumulado=(+i.interesAcumulado||0)+inter;
     i.saldo=nuevo; i.fechaSaldo=todayISO(); i.anclaTs=Date.now();
     closeModal(); commit();
@@ -774,16 +843,22 @@ function vTarj(){
 document.addEventListener("click",e=>{
   const a=e.target.closest("[data-act]");if(!a)return;
   const act=a.dataset.act;
-  if(act==="zoom"||act==="nav"||act==="gmail"||act==="pagar"||act==="mover")e.preventDefault();
+  if(act==="zoom"||act==="nav"||act==="gmail"||act==="pagar"||act==="mover"||act==="trm")e.preventDefault();
   switch(act){
     case"nav":ui.section=a.dataset.s;ui.editId=null;render();break;
-    case"canceledit":ui.editId=null;ui.invTipo=null;render();break;
+    case"canceledit":ui.editId=null;ui.invTipo=null;ui.invMoneda=null;render();break;
     case"edit":{const m=state.movimientos.find(x=>x.id===a.dataset.id);if(!m)break;
       ui.editId=m.id;ui.section=m.tipo==="ingreso"?"ingresos":"gastos";render();scrollTo(0,0);break;}
     case"editinv":{const inv=state.inversiones.find(x=>x.id===a.dataset.id);
-      ui.editId=a.dataset.id;ui.invTipo=inv?inv.tipo:null;ui.section="inversiones";render();scrollTo(0,0);break;}
+      ui.editId=a.dataset.id;ui.invTipo=inv?inv.tipo:null;ui.invMoneda=inv?(inv.moneda||"COP"):null;
+      ui.section="inversiones";render();scrollTo(0,0);break;}
     case"actsaldo":actualizarSaldo(a.dataset.id);break;
     case"mover":moverPlata();break;
+    case"trm":{const v=prompt("¿A cuánto está el dólar hoy? (TRM en pesos)",String(Math.round(TRM())));
+      if(v==null)break;
+      const n=Math.round(parseFloat(String(v).replace(/[^\d,.-]/g,"").replace(/\.(?=\d{3}\b)/g,"").replace(",","."))||0);
+      if(n>0){state.config.trm=n;state.config.trmFecha=todayISO();commit();}
+      break;}
     case"edittarj":ui.editId=a.dataset.id;ui.section="tarjetas";render();scrollTo(0,0);break;
     case"del":if(confirm("¿Eliminar este movimiento?")){state.movimientos=state.movimientos.filter(m=>m.id!==a.dataset.id);commit();}break;
     case"delinv":if(confirm("¿Eliminar esta posición?")){state.inversiones=state.inversiones.filter(i=>i.id!==a.dataset.id);commit();}break;
@@ -802,6 +877,7 @@ document.addEventListener("click",e=>{
 document.addEventListener("change",e=>{
   const s=e.target.closest('select[data-act="month"]');if(s){ui.month=s.value;ui.mesElegido=true;ui.editId=null;render();}
   const t=e.target.closest('select[data-act="invtipo"]');if(t){ui.invTipo=t.value;render();} // cambian los campos
+  const mo=e.target.closest('select[data-act="invmoneda"]');if(mo){ui.invMoneda=mo.value;render();}
 });
 document.addEventListener("submit",async e=>{
   const f=e.target.closest("form[data-form]");if(!f)return;e.preventDefault();
@@ -816,27 +892,48 @@ document.addEventListener("submit",async e=>{
     else{rec.id=uid();rec.ts=Date.now();rec.fuente="manual";if(img)rec.imagen=img;state.movimientos.push(rec);}
     f.reset();commit();
   }else if(kind==="inv"){
-    const base={nombre:(d.nombre||"").trim(),tipo:d.tipo,nota:(d.nota||"").trim(),fechaActualizacion:todayISO()};
-    const tasa=v=>Math.max(0,parseFloat(String(v||"").replace(",","."))||0);
-    const rec=(d.tipo==="accion")
-      ? Object.assign(base,{montoInvertido:money(d.montoInvertido),valorActual:money(d.valorActual)})
-      : Object.assign(base,{saldo:money(d.saldo),fechaSaldo:d.fechaSaldo||todayISO(),tasaEA:tasa(d.tasaEA),
+    const usdRec=d.moneda==="USD";
+    // decimal con signo: una pérdida es rentabilidad negativa y debe conservarse
+    const dec=v=>parseFloat(String(v||"").replace(",","."))||0;
+    const tasa=v=>Math.max(0,dec(v)); // una tasa E.A. o una TRM nunca son negativas
+    // en dólares los centavos importan; solo se quita el punto de miles (1.500,50)
+    const val=v=>usdRec?dec(String(v||"").replace(/\.(?=\d{3}\b)/g,"")):money(v);
+    const base={nombre:(d.nombre||"").trim(),tipo:d.tipo,moneda:usdRec?"USD":undefined,
+      nota:(d.nota||"").trim(),fechaActualizacion:todayISO()};
+    let rec;
+    if(d.tipo==="accion"){
+      const actual=val(d.valorActual);
+      // Al crear se deduce el costo desde la rentabilidad que muestra el broker;
+      // a partir de ahí el costo queda quieto y basta actualizar el valor.
+      let invertido;
+      if(ui.editId){invertido=val(d.montoInvertido);}
+      else if(d.rentUnidad==="abs"){invertido=actual-val(d.rent);}
+      else{const p=dec(d.rent);invertido=p<=-100?actual:actual/(1+p/100);} // -100% dejaría el costo en infinito
+      rec=Object.assign(base,{montoInvertido:Math.max(0,invertido),valorActual:actual,
+        fechaCompra:d.fechaCompra||undefined});
+    }else{
+      rec=Object.assign(base,{saldo:val(d.saldo),fechaSaldo:d.fechaSaldo||todayISO(),tasaEA:tasa(d.tasaEA),
           vencimiento:(d.tipo==="cdt"&&d.vencimiento)?d.vencimiento:undefined});
+    }
+    // pesos que realmente salieron: base para separar el rendimiento del efecto del dólar
+    if(usdRec){const trmE=tasa(String(d.trmEntrada||"").replace(/\./g,"").replace(",","."))||TRM();
+      rec.aportadoCOP=(d.tipo==="accion"?rec.montoInvertido:rec.saldo)*trmE;}
     if(ui.editId){
       const prev=state.inversiones.find(x=>x.id===ui.editId);
       // al editar se conserva lo ya ganado y aportado; el alta los inicializa
       Object.assign(prev,rec); delete prev.sinDato;
-      if(d.tipo!=="accion"){prev.aportado=(+prev.aportado)||money(d.saldo);prev.interesAcumulado=(+prev.interesAcumulado)||0;
+      if(d.tipo!=="accion"){prev.aportado=(+prev.aportado)||rec.saldo;prev.interesAcumulado=(+prev.interesAcumulado)||0;
         delete prev.montoInvertido;delete prev.valorActual;}
       else {delete prev.saldo;delete prev.fechaSaldo;delete prev.tasaEA;delete prev.vencimiento;
         delete prev.aportado;delete prev.interesAcumulado;}
+      if(!usdRec){delete prev.moneda;delete prev.aportadoCOP;}
       ui.editId=null;
     }else{
       rec.id=uid();
       if(d.tipo!=="accion"){rec.aportado=rec.saldo;rec.interesAcumulado=0;rec.anclaTs=Date.now();} // el saldo inicial es capital, no ganancia
       state.inversiones.push(rec);
     }
-    ui.invTipo=null; f.reset();commit();
+    ui.invTipo=null;ui.invMoneda=null; f.reset();commit();
   }else if(kind==="tarjeta"){
     const cl=n=>Math.min(31,Math.max(1,parseInt(n,10)||1));
     const rec={nombre:(d.nombre||"").trim(),diaCorte:cl(d.diaCorte),diaPago:cl(d.diaPago),saldoInicial:money(d.saldoInicial)};
