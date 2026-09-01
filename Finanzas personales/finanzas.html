@@ -447,19 +447,37 @@ const DESACTUALIZADA=30;
 const liquidez=()=>sum(cuentasDisponibles().map(i=>({monto:valorHoy(i)})));
 
 function patrimonio(){return sum(state.inversiones.map(i=>({monto:valorHoy(i)})))-sum(state.tarjetas.map(t=>({monto:t.saldo})));}
-function tarjetaSaldos(){ // recompute from movimientos so imports/edits stay consistent
-  // Arranca en la deuda que ya venía de antes de usar el dashboard: es saldo,
-  // no gasto del mes, porque esas compras ocurrieron en meses anteriores.
-  const s={};state.tarjetas.forEach(t=>s[t.id]=+t.saldoInicial||0);
+// La última fecha de corte que ya pasó. Lo comprado hasta ahí está facturado
+// y se paga en el próximo pago; lo posterior queda para el pago siguiente.
+function ultimoCorte(t){
+  const hoy=new Date();hoy.setHours(0,0,0,0);
+  let d=new Date(hoy.getFullYear(),hoy.getMonth(),+t.diaCorte||1);
+  if(d>hoy)d=new Date(hoy.getFullYear(),hoy.getMonth()-1,+t.diaCorte||1);
+  return d;
+}
+// Parte el saldo de una tarjeta en lo que se paga ya y lo que va para el
+// siguiente ciclo. Los abonos se aplican primero a lo ya facturado.
+function tarjetaCiclos(t){
+  const corte=ultimoCorte(t);
+  let facturado=+t.saldoInicial||0, enCurso=+t.saldoSinFacturar||0, pagos=0;
   state.movimientos.forEach(m=>{
-    if(!(m.medio in s))return;
-    if(m.tipo==="gasto")s[m.medio]+=(+m.monto||0);
-    else if(m.tipo==="pago_tarjeta")s[m.medio]-=(+m.monto||0);
+    if(m.medio!==t.id)return;
+    const v=+m.monto||0;
+    if(m.tipo==="gasto"){const f=diaISO(m.fecha); if(f&&f>corte)enCurso+=v; else facturado+=v;}
+    else if(m.tipo==="pago_tarjeta")pagos+=v;
   });
+  const aFacturado=Math.min(pagos,facturado);
+  facturado-=aFacturado; enCurso-=(pagos-aFacturado);
+  return {corte,facturado,enCurso,total:facturado+enCurso};
+}
+function tarjetaSaldos(){ // recompute from movimientos so imports/edits stay consistent
+  const s={};state.tarjetas.forEach(t=>s[t.id]=tarjetaCiclos(t).total);
   return s;
 }
 function syncSaldos(){const s=tarjetaSaldos();state.tarjetas.forEach(t=>t.saldo=Math.round(s[t.id]||0));}
 function nextPayDate(day){const t=new Date();t.setHours(0,0,0,0);let d=new Date(t.getFullYear(),t.getMonth(),day);if(d<t)d=new Date(t.getFullYear(),t.getMonth()+1,day);return d;}
+// el pago del ciclo en curso cae un mes después del próximo
+function pagoSiguiente(day){const d=nextPayDate(day);return new Date(d.getFullYear(),d.getMonth()+1,day);}
 const daysUntil=d=>Math.round((d-new Date().setHours(0,0,0,0))/86400000);
 
 // ---- charts ----
@@ -899,26 +917,32 @@ function vTarj(){
    +fld("Nombre",'<input name="nombre" placeholder="Ej. RappiCard, Visa Bancolombia" required value="'+esc(e?e.nombre:"")+'">',"grow")
    +fld("Día de corte",'<input class="num" name="diaCorte" inputmode="numeric" placeholder="1-31" required value="'+(e?e.diaCorte:"")+'">')
    +fld("Día de pago",'<input class="num" name="diaPago" inputmode="numeric" placeholder="1-31" required value="'+(e?e.diaPago:"")+'">')
-   +fld("Deuda actual",'<input class="num" name="saldoInicial" inputmode="numeric" placeholder="0" value="'+(e?(e.saldoInicial||0):"")+'">')
+   +fld("Deuda ya facturada",'<input class="num" name="saldoInicial" inputmode="numeric" placeholder="0" value="'+(e?(e.saldoInicial||0):"")+'">')
+   +fld("Compras después del corte",'<input class="num" name="saldoSinFacturar" inputmode="numeric" placeholder="0" value="'+(e?(e.saldoSinFacturar||0):"")+'">')
    +'<button class="btn" type="submit">'+(e?"Guardar cambios":"Agregar tarjeta")+'</button>'
    +(e?'<button class="btn ghost" type="button" data-act="canceledit">Cancelar</button>':"")
-  +'</div><div class="hint">«Deuda actual» es lo que ya debes hoy, de compras anteriores a este dashboard. Suma al saldo de la tarjeta pero no cuenta como gasto del mes.</div></form>'
+  +'</div><div class="hint">Separa la deuda que traes: lo «ya facturado» es lo que se paga en el próximo corte, y lo posterior al último corte se paga un mes después. Nada de esto cuenta como gasto del mes: son compras anteriores al dashboard.</div></form>'
   +(state.tarjetas.length?'<div class="grid2">'+state.tarjetas.map(t=>{
-      const nd=nextPayDate(t.diaPago),du=daysUntil(nd),saldo=saldos[t.id]||0;
-      const gastado=saldo-(+t.saldoInicial||0)+sum(state.movimientos.filter(m=>m.tipo==="pago_tarjeta"&&m.medio===t.id));
+      const nd=nextPayDate(t.diaPago),du=daysUntil(nd),c=tarjetaCiclos(t);
+      const nd2=pagoSiguiente(t.diaPago);
       return '<div class="panel"><h2>'+esc(t.nombre)+' <span class="aside">corte '+t.diaCorte+' · pago '+t.diaPago+'</span></h2>'
-       +(+t.saldoInicial?row2("Deuda previa registrada",fmt.format(t.saldoInicial)):"")
-       +(gastado?row2("Compras registradas aquí",fmt.format(gastado)):"")
-       +row2("Saldo por pagar",fmt.format(saldo),saldo>0?"neg":"")
-       +row2("Próximo pago",dISO(nd)+' <span class="due '+(du<=2?"now":du<=7?"soon":"")+'">en '+du+' días</span>')
+       +row2("A pagar el "+dISO(nd),fmt.format(c.facturado)
+          +' <span class="due '+(du<=2?"now":du<=7?"soon":"")+'">en '+du+(du===1?" día":" días")+'</span>',c.facturado>0?"neg":"")
+       +row2("Compras del ciclo en curso",fmt.format(c.enCurso)
+          +' <span class="hint">se pagan el '+dISO(nd2)+'</span>')
+       +row2("Saldo total",fmt.format(c.total),c.total>0?"neg":"")
+       +'<div class="hint">Último corte: '+dISO(c.corte)+'</div>'
        +'<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost sm" data-act="pagar" data-id="'+t.id+'">Registrar pago</button>'
        +'<button class="rowbtn" data-act="edittarj" data-id="'+t.id+'">editar</button>'
        +'<button class="rowbtn" data-act="deltarj" data-id="'+t.id+'">eliminar</button></div></div>';
     }).join("")+'</div>':'<div class="empty">Registra tus tarjetas para seguir corte, pago y saldo.</div>')
-  +(deudaTotal>0?'<div class="panel" style="margin-top:16px"><h2>Con qué la pagas</h2>'
+  +(deudaTotal>0?(function(){
+     const aPagarYa=state.tarjetas.reduce((s,t)=>s+tarjetaCiclos(t).facturado,0);
+     return '<div class="panel" style="margin-top:16px"><h2>Con qué la pagas</h2>'
      +row2("Deuda total en tarjetas",fmt.format(deudaTotal),"neg")
-     +row2("Disponible en cuentas de ahorro",fmt.format(disponible),disponible>=deudaTotal?"pos":"")
-     +row2(disponible>=deudaTotal?"Te sobra":"Te falta",fmt.format(Math.abs(disponible-deudaTotal)),disponible>=deudaTotal?"pos":"neg")
+     +row2("De eso, a pagar en el próximo corte",fmt.format(aPagarYa),aPagarYa>0?"neg":"")
+     +row2("Disponible en cuentas de ahorro",fmt.format(disponible),disponible>=aPagarYa?"pos":"")
+     +row2(disponible>=deudaTotal?"Te sobra":"Te falta",fmt.format(Math.abs(disponible-deudaTotal)),disponible>=deudaTotal?"pos":"neg");})()
      +'<div class="hint">Los CDT no se cuentan aquí: están inmovilizados hasta su vencimiento.</div></div>':"")
   +'<div class="sectionhead"><h2>Pagos registrados</h2></div>'
   +(pagos.length?tbl(["Fecha","Tarjeta","Pagado desde","Monto",""],pagos.map(m=>{
@@ -1058,7 +1082,8 @@ document.addEventListener("submit",async e=>{
     ui.invTipo=null;ui.invMoneda=null; f.reset();commit();
   }else if(kind==="tarjeta"){
     const cl=n=>Math.min(31,Math.max(1,parseInt(n,10)||1));
-    const rec={nombre:(d.nombre||"").trim(),diaCorte:cl(d.diaCorte),diaPago:cl(d.diaPago),saldoInicial:money(d.saldoInicial)};
+    const rec={nombre:(d.nombre||"").trim(),diaCorte:cl(d.diaCorte),diaPago:cl(d.diaPago),
+      saldoInicial:money(d.saldoInicial),saldoSinFacturar:money(d.saldoSinFacturar)};
     if(ui.editId){Object.assign(state.tarjetas.find(t=>t.id===ui.editId),rec);ui.editId=null;}
     else state.tarjetas.push(Object.assign({id:uid(),saldo:0},rec));
     f.reset();commit();
@@ -1067,11 +1092,13 @@ document.addEventListener("submit",async e=>{
 
 function pagarTarjeta(id){
   const t=state.tarjetas.find(x=>x.id===id);if(!t)return;
-  const saldos=tarjetaSaldos();
-  const deuda=Math.max(0,saldos[id]||0);
+  const c=tarjetaCiclos(t);
+  // se propone lo facturado, que es lo que el banco cobra en este corte
+  const deuda=Math.max(0,Math.round(c.facturado));
   const cuentas=state.inversiones.filter(i=>i.tipo==="cuenta");
   modal('<h2>Pagar '+esc(t.nombre)+'</h2>'
-   +'<p class="sub">Saldo por pagar: '+fmt.format(deuda)+'. Puedes abonar solo una parte.</p>'
+   +'<p class="sub">A pagar en este corte: '+fmt.format(c.facturado)
+     +(c.enCurso>0?'. Además hay '+fmt.format(c.enCurso)+' del ciclo en curso, que se pagan el próximo mes':"")+'.</p>'
    +'<div class="formrow">'
     +fld("Monto del pago",'<input class="num" id="pg-monto" inputmode="numeric" value="'+deuda+'">')
     +fld("¿De dónde sale?",'<select id="pg-desde"><option value="">Otra fuente (no descontar)</option>'
