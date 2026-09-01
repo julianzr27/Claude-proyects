@@ -189,8 +189,8 @@ td.r,th.r{text-align:right}
 (function(){
 const CATS=["Mercado","Transporte","Vivienda","Servicios","Salud","Ocio","Educación","Suscripciones","Otros"];
 const CCOL={Mercado:"var(--c1)",Transporte:"var(--c2)",Vivienda:"var(--c3)",Salud:"var(--c4)",Ocio:"var(--c5)",Servicios:"var(--c6)",Educación:"var(--c7)",Suscripciones:"var(--c8)",Otros:"var(--c9)"};
-const INVCOL={accion:"var(--c2)",cuenta:"var(--c1)",cdt:"var(--c6)"};
-const INVLBL={accion:"Acciones",cuenta:"Cuentas",cdt:"CDT"};
+const INVCOL={accion:"var(--c2)",cuenta:"var(--c1)",cdt:"var(--c6)",efectivo:"var(--c7)"};
+const INVLBL={accion:"Acciones",cuenta:"Cuentas",cdt:"CDT",efectivo:"Efectivo"};
 const fmt=new Intl.NumberFormat("es-CO",{style:"currency",currency:"COP",maximumFractionDigits:0});
 const fmt2=new Intl.NumberFormat("es-CO",{maximumFractionDigits:1});
 const fmtTasa=new Intl.NumberFormat("es-CO",{maximumFractionDigits:2}); // 9,25% no debe verse como 9,3%
@@ -231,6 +231,13 @@ function migrarInversiones(){
     i.tasaEA=+i.tasaEA||0;
     i.fechaSaldo=i.fechaActualizacion||todayISO();
     delete i.valorActual;delete i.montoInvertido;
+  });
+  // "cuenta" y "efectivo" eran etiquetas genéricas; ahora el medio apunta a una
+  // posición real. Lo genérico pasa a «sin especificar» para no mover saldos ajenos.
+  const hayEfectivo=state.inversiones.some(i=>i.id===ID_EFECTIVO);
+  state.movimientos.forEach(m=>{
+    if(m.medio==="cuenta")delete m.medio;
+    if(m.medio==="efectivo"&&!hayEfectivo)delete m.medio;
   });
 }
 // La sección y el mes viven en sessionStorage: al guardar, el visor recarga
@@ -311,7 +318,7 @@ const prevMonth=mk=>{const d=mkDate(mk);d.setMonth(d.getMonth()-1);return dYM(d)
 // ---- renta fija (cuentas y CDT) ----
 // El saldo confirmado + la tasa E.A. dan una estimación del valor de hoy.
 // Es estimación, no verdad: entre actualizaciones la cuenta puede haberse movido.
-const esFija=i=>i.tipo==="cuenta"||i.tipo==="cdt";
+const esFija=i=>i.tipo==="cuenta"||i.tipo==="cdt"||i.tipo==="efectivo";
 const diaISO=s=>{const[y,m,d]=String(s||"").split("-").map(Number);return (y&&m&&d)?new Date(y,m-1,d):null;}; // local, no UTC
 function diasEntre(desdeISO,hastaDate){
   const a=diaISO(desdeISO); if(!a)return 0;
@@ -320,16 +327,48 @@ function diasEntre(desdeISO,hastaDate){
 }
 // valor de un capital a tasa efectiva anual tras n días
 const capitaliza=(capital,tasaEA,dias)=>capital*Math.pow(1+(+tasaEA||0)/100,dias/365);
+
+// ---- movimientos que tocan una cuenta ----
+// El saldo confirmado es el ancla; todo lo registrado después se suma encima.
+// Así hay una sola regla y nada descuenta dos veces.
+const ID_EFECTIVO="efectivo";
+const esCuenta=i=>i.tipo==="cuenta"||i.tipo==="efectivo"; // de donde sale y entra plata
+// Un movimiento ya está dentro del saldo confirmado si ocurrió antes de la fecha
+// del ancla, o si se registró antes de confirmarlo. Hace falta lo segundo porque
+// un gasto de hoy y un saldo de hoy no se distinguen solo por fecha.
+function movNeto(id,desdeISO,anclaTs){
+  const corte=diaISO(desdeISO);
+  return state.movimientos.reduce((s,m)=>{
+    if(corte&&diaISO(m.fecha)&&diaISO(m.fecha)<corte)return s;
+    if(anclaTs&&m.ts&&m.ts<=anclaTs)return s;
+    const v=+m.monto||0;
+    if(m.tipo==="traslado")return s+(m.hacia===id?v:0)-(m.desde===id?v:0);
+    if(m.tipo==="ingreso"&&m.medio===id)return s+v;
+    if(m.tipo==="gasto"&&m.medio===id)return s-v;      // un gasto con tarjeta no entra: su medio es la tarjeta
+    if(m.tipo==="pago_tarjeta"&&m.desde===id)return s-v;
+    return s;
+  },0);
+}
+function billeteraEfectivo(){ // se crea sola la primera vez que se necesita
+  let b=state.inversiones.find(i=>i.id===ID_EFECTIVO);
+  if(!b){b={id:ID_EFECTIVO,nombre:"Efectivo",tipo:"efectivo",saldo:0,fechaSaldo:todayISO(),aportado:0,interesAcumulado:0,anclaTs:0};
+    state.inversiones.push(b);}
+  return b;
+}
+const cuentasDisponibles=()=>state.inversiones.filter(esCuenta);
+// ponytail: el interés se calcula sobre el saldo anclado, ignorando los movimientos
+// del periodo. Se corrige al confirmar el saldo real; si algún día importa la
+// precisión intermedia, habría que capitalizar día a día sobre el saldo corriente.
 function interesCausado(i){ // interés estimado desde el último saldo confirmado
   if(!esFija(i))return 0;
   const hasta=i.vencimiento&&diaISO(i.vencimiento)<new Date()?diaISO(i.vencimiento):null; // un CDT deja de causar al vencer
   const dias=hasta?diasEntre(i.fechaSaldo,hasta):diasEntre(i.fechaSaldo);
   return capitaliza(+i.saldo||0,i.tasaEA,dias)-(+i.saldo||0);
 }
-// lo que vale hoy una posición, sea renta fija o acción
-function valorHoy(i){return esFija(i)?(+i.saldo||0)+interesCausado(i):(+i.valorActual||0);}
+// lo que vale hoy una posición: ancla + interés + lo que se haya movido desde entonces
+function valorHoy(i){return esFija(i)?(+i.saldo||0)+interesCausado(i)+movNeto(i.id,i.fechaSaldo,i.anclaTs):(+i.valorActual||0);}
 // capital neto puesto por Julián: para renta fija son los aportes, para acciones lo invertido
-function aportadoDe(i){return esFija(i)?(+i.aportado||0):(+i.montoInvertido||0);}
+function aportadoDe(i){return esFija(i)?(+i.aportado||0)+movNeto(i.id,i.fechaSaldo,i.anclaTs):(+i.montoInvertido||0);}
 // todo lo ganado: lo ya reconocido al actualizar saldos + lo que se ha causado desde entonces
 function interesTotal(i){return esFija(i)?(+i.interesAcumulado||0)+interesCausado(i):(+i.valorActual||0)-(+i.montoInvertido||0);}
 function valorAlVencimiento(i){
@@ -340,7 +379,7 @@ const diasSinConfirmar=i=>esFija(i)?diasEntre(i.fechaSaldo):diasEntre(i.fechaAct
 const DESACTUALIZADA=30;
 // Plata disponible para pagar tarjetas: cuentas de ahorro. Un CDT no cuenta,
 // está inmovilizado hasta el vencimiento.
-const liquidez=()=>sum(state.inversiones.filter(i=>i.tipo==="cuenta").map(i=>({monto:valorHoy(i)})));
+const liquidez=()=>sum(state.inversiones.filter(esCuenta).map(i=>({monto:valorHoy(i)})));
 
 function patrimonio(){return sum(state.inversiones.map(i=>({monto:valorHoy(i)})))-sum(state.tarjetas.map(t=>({monto:t.saldo})));}
 function tarjetaSaldos(){ // recompute from movimientos so imports/edits stay consistent
@@ -453,10 +492,12 @@ function tbl(cols,rows,rAlign){
    +rows.map(r=>'<tr>'+r.map((c,i)=>'<td class="'+((rAlign&&rAlign[i])?"r":"")+'">'+c+'</td>').join("")+'</tr>').join("")+'</tbody></table></div>';
 }
 
-function medioOptions(sel){
-  return '<option value="efectivo"'+(sel==="efectivo"?" selected":"")+'>Efectivo</option>'
-   +'<option value="cuenta"'+(sel==="cuenta"?" selected":"")+'>Cuenta / débito</option>'
-   +state.tarjetas.map(t=>'<option value="'+t.id+'"'+(sel===t.id?" selected":"")+'>'+esc(t.nombre)+' (crédito)</option>').join("");
+// De dónde sale la plata de un gasto: una cuenta/efectivo baja su saldo,
+// una tarjeta sube su deuda (y la plata sale después, al pagar la tarjeta).
+function medioOptions(sel,soloCuentas){
+  return '<option value=""'+(!sel?" selected":"")+'>Sin especificar</option>'
+   +cuentasDisponibles().map(c=>'<option value="'+c.id+'"'+(sel===c.id?" selected":"")+'>'+esc(c.nombre)+' · '+fmt.format(valorHoy(c))+'</option>').join("")
+   +(soloCuentas?"":state.tarjetas.map(t=>'<option value="'+t.id+'"'+(sel===t.id?" selected":"")+'>'+esc(t.nombre)+' (crédito)</option>').join(""));
 }
 function catOptions(sel){return CATS.map(c=>'<option'+(sel===c?" selected":"")+'>'+c+'</option>').join("");}
 
@@ -470,13 +511,13 @@ function vGastos(){
    +fld("Fecha",'<input type="date" name="fecha" required value="'+esc(e?e.fecha:todayISO())+'">')
    +fld("Descripción",'<input name="descripcion" placeholder="Ej. Mercado del mes" value="'+esc(e?e.descripcion:"")+'">',"grow")
    +fld("Categoría",'<select name="categoria">'+catOptions(e?e.categoria:"Mercado")+'</select>')
-   +fld("Medio",'<select name="medio">'+medioOptions(e?e.medio:"cuenta")+'</select>')
+   +fld("Sale de",'<select name="medio">'+medioOptions(e?e.medio:"")+'</select>')
    +fld("Monto (COP)",'<input class="num" name="monto" inputmode="numeric" required value="'+(e?e.monto:"")+'">')
    +fld("Recibo",'<input type="file" name="img" accept="image/*">')
    +'<button class="btn" type="submit">'+(e?"Guardar cambios":"Agregar")+'</button>'
    +(e?'<button class="btn ghost" type="button" data-act="canceledit">Cancelar</button>':"")
   +'</div>'+(e&&e.imagen?'<div class="hint">Recibo adjunto <img class="thumb" src="'+e.imagen+'" data-act="zoom"> <button type="button" class="rowbtn" data-act="rmimg">quitar</button></div>':"")
-  +'<div class="hint">Los gastos con tarjeta suman al saldo de esa tarjeta.</div></form>'
+  +'<div class="hint">Si eliges una cuenta, su saldo baja al guardar. Con tarjeta sube la deuda y la plata sale después, cuando la pagues.</div></form>'
   +'<div class="sectionhead"><h2>Movimientos de '+mk+' · '+fmt.format(sum(list))+'</h2>'+gmailBtn+'</div>'
   +(list.length?tbl(["Fecha","Descripción","Categoría","Medio","","Monto",""],list.map(m=>[
      '<span class="num">'+m.fecha.slice(5)+'</span>',
@@ -488,7 +529,11 @@ function vGastos(){
      '<button class="rowbtn" data-act="edit" data-id="'+m.id+'">editar</button><button class="rowbtn" data-act="del" data-id="'+m.id+'">✕</button>'
     ]),[0,0,0,0,0,1,1]):'<div class="empty">Sin gastos en '+mk+'. Agrega arriba o sincroniza con Gmail.</div>');
 }
-function medioNombre(id){if(id==="efectivo")return"Efectivo";if(id==="cuenta")return"Cuenta";const t=state.tarjetas.find(x=>x.id===id);return t?esc(t.nombre):"—";}
+function medioNombre(id){
+  const c=state.inversiones.find(x=>x.id===id); if(c)return esc(c.nombre);
+  const t=state.tarjetas.find(x=>x.id===id); if(t)return esc(t.nombre);
+  return "—";
+}
 function fld(l,inner,cls){return '<div class="fld '+(cls||"")+'"><label>'+esc(l)+'</label>'+inner+'</div>';}
 
 function vIngresos(){
@@ -499,17 +544,19 @@ function vIngresos(){
    +fld("Fecha",'<input type="date" name="fecha" required value="'+esc(e?e.fecha:todayISO())+'">')
    +fld("Fuente",'<input name="descripcion" placeholder="Ej. Salario, dividendos, freelance" value="'+esc(e?e.descripcion:"")+'">',"grow")
    +fld("Categoría",'<select name="categoria"><option>Salario</option><option>Negocio</option><option>Dividendos</option><option>Intereses</option><option>Freelance</option><option>Otros</option></select>')
+   +fld("Entra a",'<select name="medio">'+medioOptions(e?e.medio:"",true)+'</select>')
    +fld("Monto (COP)",'<input class="num" name="monto" inputmode="numeric" required value="'+(e?e.monto:"")+'">')
    +'<button class="btn" type="submit">'+(e?"Guardar cambios":"Agregar")+'</button>'
    +(e?'<button class="btn ghost" type="button" data-act="canceledit">Cancelar</button>':"")
-  +'</div></form>'
+  +'</div><div class="hint">Si eliges la cuenta donde cae el ingreso, su saldo sube al guardar.</div></form>'
   +'<div class="sectionhead"><h2>Ingresos de '+mk+' · '+fmt.format(sum(list))+'</h2>'
    +(mcpNS===null?'':'<button class="btn ghost sm" data-act="gmail" data-kind="ingreso">Sincronizar Gmail</button>')+'</div>'
-  +(list.length?tbl(["Fecha","Fuente","Categoría","Monto",""],list.map(m=>[
+  +(list.length?tbl(["Fecha","Fuente","Categoría","Entra a","Monto",""],list.map(m=>[
      '<span class="num">'+m.fecha.slice(5)+'</span>',esc(m.descripcion||"—"),'<span class="tag">'+esc(m.categoria||"—")+'</span>',
+     '<span class="tag">'+medioNombre(m.medio)+'</span>',
      '<span class="num">'+fmt.format(m.monto)+'</span>',
      '<button class="rowbtn" data-act="edit" data-id="'+m.id+'">editar</button><button class="rowbtn" data-act="del" data-id="'+m.id+'">✕</button>'
-    ]),[0,0,0,1,1]):'<div class="empty">Sin ingresos en '+mk+'.</div>');
+    ]),[0,0,0,0,1,1]):'<div class="empty">Sin ingresos en '+mk+'.</div>');
 }
 
 function vInv(){
@@ -556,7 +603,8 @@ function vInv(){
      +'<div class="hint">La ganancia de cuentas y CDT es interés causado; el de acciones es valorización.</div>'
    +'</div></div>'
 
-  +'<div class="sectionhead"><h2>Cuentas y CDT</h2></div>'
+  +'<div class="sectionhead"><h2>Cuentas, efectivo y CDT</h2>'
+   +'<button class="btn ghost sm" data-act="mover">Mover plata / retirar efectivo</button></div>'
   +(fijas.length?tbl(["Nombre","Saldo base","Tasa E.A.","Interés ganado","Valor hoy","Peso",""],fijas.map(i=>{
       // en un CDT el capital está quieto: la estimación es exacta y no hay nada que confirmar
       const ganado=interesTotal(i), vHoy=valorHoy(i);
@@ -578,6 +626,15 @@ function vInv(){
     }),[0,1,1,1,1,1,1])
    :'<div class="empty">Agrega tus cuentas de ahorro y CDT arriba, con su tasa E.A.</div>')
 
+  +(function(){
+     const tr=state.movimientos.filter(m=>m.tipo==="traslado").sort((a,b)=>a.fecha<b.fecha?1:-1).slice(0,10);
+     if(!tr.length)return "";
+     return '<div class="sectionhead"><h2>Traslados</h2></div>'
+      +tbl(["Fecha","Sale de","Entra a","Monto",""],tr.map(m=>[
+        '<span class="num">'+m.fecha+'</span>',medioNombre(m.desde),medioNombre(m.hacia),
+        '<span class="num">'+fmt.format(m.monto)+'</span>',
+        '<button class="rowbtn" data-act="del" data-id="'+m.id+'">✕</button>']),[0,0,0,1,1]);
+   })()
   +'<div class="sectionhead"><h2>Acciones y fondos</h2></div>'
   +(acciones.length?tbl(["Nombre","Invertido","Valor actual","Rend.","Peso",""],acciones.map(i=>{
       const r=i.montoInvertido?(i.valorActual-i.montoInvertido)/i.montoInvertido*100:0;
@@ -591,34 +648,83 @@ function vInv(){
    :'<div class="empty">Sin acciones ni fondos registrados.</div>');
 }
 
+// Mover plata entre cuentas propias. No es gasto ni ingreso: la plata sigue
+// siendo tuya, solo cambia de sitio. Retirar efectivo es un traslado más.
+function moverPlata(){
+  const cuentas=cuentasDisponibles();
+  if(cuentas.length<1){modal('<h2>Mover plata</h2><div class="msg warn">Primero registra al menos una cuenta en Inversiones.</div><div class="acts"><button class="btn ghost" data-act="closemodal">Cerrar</button></div>');return;}
+  const opts=sel=>cuentas.map(c=>'<option value="'+c.id+'"'+(sel===c.id?" selected":"")+'>'+esc(c.nombre)+' · '+fmt.format(valorHoy(c))+'</option>').join("");
+  const hayEfectivo=cuentas.some(c=>c.id===ID_EFECTIVO);
+  modal('<h2>Mover plata</h2>'
+   +'<p class="sub">Entre tus propias cuentas. No cuenta como gasto ni como ingreso.</p>'
+   +'<div class="formrow">'
+    +fld("Sale de",'<select id="tr-desde">'+opts(cuentas[0].id)+'</select>',"grow")
+    +fld("Entra a",'<select id="tr-hacia">'+opts(cuentas[1]?cuentas[1].id:cuentas[0].id)
+      +(hayEfectivo?"":'<option value="'+ID_EFECTIVO+'">Efectivo (retiro)</option>')+'</select>',"grow")
+    +fld("Monto",'<input class="num" id="tr-monto" inputmode="numeric" value="">')
+    +fld("Fecha",'<input type="date" id="tr-fecha" value="'+todayISO()+'">')
+   +'</div>'
+   +'<div class="msg warn" id="tr-aviso" style="margin-top:12px"></div>'
+   +'<div class="acts"><button class="btn ghost" data-act="closemodal">Cancelar</button><button class="btn" id="tr-go">Registrar traslado</button></div>');
+  const leer=v=>Math.round(parseFloat(String(v).replace(/[^\d,.-]/g,"").replace(/\.(?=\d{3}\b)/g,"").replace(",","."))||0);
+  function pintar(){
+    const desde=$("#tr-desde").value, hacia=$("#tr-hacia").value, monto=leer($("#tr-monto").value);
+    const a=state.inversiones.find(x=>x.id===desde);
+    if(desde===hacia){$("#tr-aviso").textContent="Elige dos cuentas distintas.";return;}
+    if(!monto){$("#tr-aviso").textContent="Escribe el monto a mover.";return;}
+    $("#tr-aviso").textContent=(a?esc(a.nombre)+" bajaría a "+fmt.format(valorHoy(a)-monto)+". ":"")
+      +"Tu patrimonio no cambia: la plata solo cambia de sitio.";
+  }
+  ["#tr-desde","#tr-hacia"].forEach(s=>$(s).onchange=pintar); $("#tr-monto").oninput=pintar; pintar();
+  $("#tr-go").onclick=()=>{
+    const desde=$("#tr-desde").value, hacia=$("#tr-hacia").value, monto=leer($("#tr-monto").value);
+    if(!monto||desde===hacia)return;
+    if(hacia===ID_EFECTIVO)billeteraEfectivo(); // la crea si aún no existe
+    state.movimientos.push({id:uid(),ts:Date.now(),fecha:$("#tr-fecha").value||todayISO(),tipo:"traslado",
+      desde:desde,hacia:hacia,monto:monto,descripcion:"Traslado",fuente:"manual"});
+    closeModal();commit();
+  };
+}
+
 // Actualizar saldo: propone el interés que la tasa predice y deja corregirlo
 // con el número real del banco. Lo que sobra de la diferencia es aporte o retiro.
 function actualizarSaldo(id){
   const i=state.inversiones.find(x=>x.id===id); if(!i||!esFija(i))return;
   const previsto=Math.round(interesCausado(i)), saldoAnt=+i.saldo||0, dias=diasEntre(i.fechaSaldo);
+  const registrado=Math.round(movNeto(i.id,i.fechaSaldo,i.anclaTs)); // gastos, ingresos y traslados ya anotados
+  const esperado=saldoAnt+registrado+previsto;
   modal('<h2>Actualizar '+esc(i.nombre)+'</h2>'
-   +'<p class="sub">Último saldo confirmado: '+fmt.format(saldoAnt)+' el '+esc(i.fechaSaldo||"—")+' ('+dias+' días).</p>'
-   +'<div class="formrow">'
-    +fld("Saldo real hoy",'<input class="num" id="as-saldo" inputmode="numeric" value="'+saldoAnt+'">')
-    +fld("Interés ganado",'<input class="num" id="as-interes" inputmode="numeric" value="'+previsto+'">')
+   +'<p class="sub">Saldo confirmado: '+fmt.format(saldoAnt)+' el '+esc(i.fechaSaldo||"—")+' ('+dias+' días).</p>'
+   +'<div class="panel" style="margin-bottom:14px">'
+     +row2("Saldo confirmado",fmt.format(saldoAnt))
+     +(registrado?row2("Movimientos registrados desde entonces",fmt.format(registrado),registrado>=0?"pos":"neg"):"")
+     +(previsto?row2("Interés estimado",fmt.format(previsto),"pos"):"")
+     +row2("El dashboard espera",fmt.format(esperado))
    +'</div>'
-   +'<div class="hint">La tasa predice '+fmt.format(previsto)+' de interés en esos días. Corrígelo si tu banco te muestra otro número.</div>'
+   +'<div class="formrow">'
+    +fld("Saldo real hoy",'<input class="num" id="as-saldo" inputmode="numeric" value="'+esperado+'">')
+    +fld("De eso, interés",'<input class="num" id="as-interes" inputmode="numeric" value="'+previsto+'">')
+   +'</div>'
+   +'<div class="hint">Corrige el interés con el número que te muestre tu banco. Lo que no cuadre queda como movimiento que no habías registrado.</div>'
    +'<div class="msg warn" id="as-delta" style="margin-top:12px"></div>'
    +'<div class="acts"><button class="btn ghost" data-act="closemodal">Cancelar</button><button class="btn" id="as-go">Guardar</button></div>');
   const $s=$("#as-saldo"), $i=$("#as-interes"), $d=$("#as-delta");
   const leer=v=>Math.round(parseFloat(String(v).replace(/[^\d,.-]/g,"").replace(/\.(?=\d{3}\b)/g,"").replace(",","."))||0);
   function pintar(){
-    const nuevo=leer($s.value), inter=leer($i.value), mov=nuevo-saldoAnt-inter;
-    $d.textContent=Math.abs(mov)<1
-      ? "Todo el cambio es interés. No se registra aporte ni retiro."
-      : (mov>0?"Se registra un aporte de "+fmt.format(mov):"Se registra un retiro de "+fmt.format(-mov));
+    const nuevo=leer($s.value), inter=leer($i.value), sinRegistrar=nuevo-saldoAnt-registrado-inter;
+    $d.textContent=Math.abs(sinRegistrar)<1
+      ? "Todo cuadra con lo registrado más el interés."
+      : (sinRegistrar>0?"Sobran "+fmt.format(sinRegistrar)+": se anotan como entrada sin registrar."
+                       :"Faltan "+fmt.format(-sinRegistrar)+": se anotan como salida sin registrar.");
   }
   $s.oninput=pintar; $i.oninput=pintar; pintar();
   $("#as-go").onclick=()=>{
-    const nuevo=leer($s.value), inter=leer($i.value), mov=nuevo-saldoAnt-inter;
-    i.saldo=nuevo; i.fechaSaldo=todayISO();
+    const nuevo=leer($s.value), inter=leer($i.value), sinRegistrar=nuevo-saldoAnt-registrado-inter;
+    // El nuevo ancla absorbe todo lo anterior: los movimientos ya contados quedan
+    // dentro del saldo, así que el capital sube por ellos y por lo no registrado.
+    i.aportado=(+i.aportado||0)+registrado+sinRegistrar;
     i.interesAcumulado=(+i.interesAcumulado||0)+inter;
-    i.aportado=(+i.aportado||0)+mov;
+    i.saldo=nuevo; i.fechaSaldo=todayISO(); i.anclaTs=Date.now();
     closeModal(); commit();
   };
 }
@@ -668,7 +774,7 @@ function vTarj(){
 document.addEventListener("click",e=>{
   const a=e.target.closest("[data-act]");if(!a)return;
   const act=a.dataset.act;
-  if(act==="zoom"||act==="nav"||act==="gmail"||act==="pagar")e.preventDefault();
+  if(act==="zoom"||act==="nav"||act==="gmail"||act==="pagar"||act==="mover")e.preventDefault();
   switch(act){
     case"nav":ui.section=a.dataset.s;ui.editId=null;render();break;
     case"canceledit":ui.editId=null;ui.invTipo=null;render();break;
@@ -677,6 +783,7 @@ document.addEventListener("click",e=>{
     case"editinv":{const inv=state.inversiones.find(x=>x.id===a.dataset.id);
       ui.editId=a.dataset.id;ui.invTipo=inv?inv.tipo:null;ui.section="inversiones";render();scrollTo(0,0);break;}
     case"actsaldo":actualizarSaldo(a.dataset.id);break;
+    case"mover":moverPlata();break;
     case"edittarj":ui.editId=a.dataset.id;ui.section="tarjetas";render();scrollTo(0,0);break;
     case"del":if(confirm("¿Eliminar este movimiento?")){state.movimientos=state.movimientos.filter(m=>m.id!==a.dataset.id);commit();}break;
     case"delinv":if(confirm("¿Eliminar esta posición?")){state.inversiones=state.inversiones.filter(i=>i.id!==a.dataset.id);commit();}break;
@@ -702,12 +809,11 @@ document.addEventListener("submit",async e=>{
   const kind=f.dataset.form;
   const money=v=>Math.round(parseFloat(String(v).replace(/[^\d,.-]/g,"").replace(/\.(?=\d{3}\b)/g,"").replace(",","."))||0);
   if(kind==="gasto"||kind==="ingreso"){
-    const rec={fecha:d.fecha,tipo:kind,categoria:d.categoria,descripcion:(d.descripcion||"").trim(),monto:money(d.monto)};
-    if(kind==="gasto")rec.medio=d.medio;
+    const rec={fecha:d.fecha,tipo:kind,categoria:d.categoria,descripcion:(d.descripcion||"").trim(),monto:money(d.monto),medio:d.medio||undefined};
     let img=null;const file=f.querySelector('input[name="img"]');
     if(file&&file.files&&file.files[0])img=await thumb(file.files[0]).catch(()=>null);
     if(ui.editId){const m=state.movimientos.find(x=>x.id===ui.editId);Object.assign(m,rec);if(img)m.imagen=img;ui.editId=null;}
-    else{rec.id=uid();rec.fuente="manual";if(img)rec.imagen=img;state.movimientos.push(rec);}
+    else{rec.id=uid();rec.ts=Date.now();rec.fuente="manual";if(img)rec.imagen=img;state.movimientos.push(rec);}
     f.reset();commit();
   }else if(kind==="inv"){
     const base={nombre:(d.nombre||"").trim(),tipo:d.tipo,nota:(d.nota||"").trim(),fechaActualizacion:todayISO()};
@@ -727,7 +833,7 @@ document.addEventListener("submit",async e=>{
       ui.editId=null;
     }else{
       rec.id=uid();
-      if(d.tipo!=="accion"){rec.aportado=rec.saldo;rec.interesAcumulado=0;} // el saldo inicial es capital, no ganancia
+      if(d.tipo!=="accion"){rec.aportado=rec.saldo;rec.interesAcumulado=0;rec.anclaTs=Date.now();} // el saldo inicial es capital, no ganancia
       state.inversiones.push(rec);
     }
     ui.invTipo=null; f.reset();commit();
@@ -767,11 +873,9 @@ function pagarTarjeta(id){
   $("#pg-go").onclick=()=>{
     const monto=leer($("#pg-monto").value), desde=$("#pg-desde").value;
     if(monto<=0)return;
-    state.movimientos.push({id:uid(),fecha:todayISO(),tipo:"pago_tarjeta",medio:id,desde:desde||undefined,
+    // No se toca el saldo de la cuenta aquí: movNeto ya descuenta este pago.
+    state.movimientos.push({id:uid(),ts:Date.now(),fecha:todayISO(),tipo:"pago_tarjeta",medio:id,desde:desde||undefined,
       descripcion:"Pago "+t.nombre,monto:monto,fuente:"manual"});
-    const c=state.inversiones.find(x=>x.id===desde);
-    // Sacar plata de la cuenta baja saldo y capital por igual: no es pérdida ni ganancia.
-    if(c){c.saldo=(+c.saldo||0)-monto;c.aportado=(+c.aportado||0)-monto;}
     closeModal();commit();
   };
 }
@@ -857,7 +961,7 @@ async function gmailSync(kind){
     }
     let desc=subj.replace(/rappicard|resumen de transacci[oó]n/gi,"").replace(/[-|–]/g," ").trim()||sender.split("<")[0].trim();
     const rc=/rappicard\.co/i.test(sender);
-    let medio="cuenta";
+    let medio="";
     if(rc){const cm=(body||snip).match(/Comercio\s*\|?\s*([A-Za-z0-9ÁÉÍÓÚÑñ .*&-]{2,40}?)\s*(?:\||Fecha|No\.|M[eé]todo)/i);if(cm)desc=cm[1].trim();
       const t=state.tarjetas.find(x=>/rappi/i.test(x.nombre));if(t)medio=t.id;}
     const dm=(body||snip+" "+subj).match(/(\d{4}-\d{2}-\d{2})/);
@@ -884,13 +988,13 @@ function renderReview(cands,kind){
     +'<td><input class="rv-f" type="date" value="'+esc(c.fecha)+'"></td>'
     +'<td><input class="rv-d" value="'+esc(c.descripcion)+'"></td>'
     +'<td><select class="rv-c">'+(kind==="ingreso"?["Salario","Negocio","Dividendos","Intereses","Freelance","Otros"]:CATS).map(x=>'<option'+(x===c.categoria?" selected":"")+'>'+x+'</option>').join("")+'</select></td>'
-    +(kind==="gasto"?'<td><select class="rv-m">'+medioOptions(c.medio)+'</select></td>':"")
+    +'<td><select class="rv-m">'+medioOptions(c.medio,kind==="ingreso")+'</select></td>'
     +'<td><input class="rv-a amt" inputmode="numeric" value="'+(c.monto||"")+'"></td>'
     +'<td style="color:var(--ink-3);font-size:.75rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(c.sender)+'">'+esc(c.sender)+'</td></tr>').join("");
   modal('<h2>Revisar '+cands.length+' movimientos de Gmail</h2>'
    +'<p class="sub">Desmarca lo que no quieras, ajusta montos y categorías. Nada se guarda hasta confirmar.</p>'
    +'<div style="overflow:auto"><table class="rev"><thead><tr><th></th><th>Fecha</th><th>Descripción</th><th>Categoría</th>'
-   +(kind==="gasto"?"<th>Medio</th>":"")+'<th class="r">Monto</th><th>Correo</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
+   +'<th>'+(kind==="gasto"?"Sale de":"Entra a")+'</th><th class="r">Monto</th><th>Correo</th></tr></thead><tbody>'+rows+'</tbody></table></div>'
    +'<div class="acts"><button class="btn ghost" data-act="closemodal">Cancelar</button><button class="btn" id="rv-go">Importar seleccionados</button></div>');
   $("#rv-go").onclick=()=>{
     let n=0;
@@ -899,9 +1003,9 @@ function renderReview(cands,kind){
       const c=cands[+tr.dataset.i];
       const monto=Math.round(parseFloat(String(tr.querySelector(".rv-a").value).replace(/[^\d]/g,""))||0);
       if(monto<=0)return;
-      const rec={id:uid(),tipo:kind,fecha:tr.querySelector(".rv-f").value,descripcion:tr.querySelector(".rv-d").value.trim(),
+      const rec={id:uid(),ts:Date.now(),tipo:kind,fecha:tr.querySelector(".rv-f").value,descripcion:tr.querySelector(".rv-d").value.trim(),
         categoria:tr.querySelector(".rv-c").value,monto:monto,fuente:"gmail",gmailMsgId:c.gmailMsgId};
-      if(kind==="gasto")rec.medio=(tr.querySelector(".rv-m")||{}).value||"cuenta";
+      rec.medio=(tr.querySelector(".rv-m")||{}).value||undefined;
       state.movimientos.push(rec);n++;
     });
     closeModal();commit();
