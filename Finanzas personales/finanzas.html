@@ -46,7 +46,9 @@ a{color:inherit}
 .num{font-variant-numeric:tabular-nums;font-family:var(--mono)}
 .lbl{font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);font-weight:600}
 
-.shell{display:grid;grid-template-columns:212px 1fr;min-height:100vh}
+/* minmax(0,1fr) y no 1fr: si no, el mínimo de contenido ensancha la columna
+   y la página se desborda a lo ancho en pantallas angostas */
+.shell{display:grid;grid-template-columns:212px minmax(0,1fr);min-height:100vh}
 .rail{border-right:1px solid var(--line);padding:22px 14px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh}
 .brand{font-family:var(--serif);font-size:1.15rem;font-weight:700;padding:4px 10px 16px;letter-spacing:-.01em}
 .brand span{color:var(--accent)}
@@ -65,7 +67,7 @@ main{padding:26px 30px 60px;max-width:1120px}
 .monthsel{display:flex;align-items:center;gap:8px}
 select.month{background:var(--surface);border:1px solid var(--line-2);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:.85rem}
 
-.tiles{display:grid;grid-template-columns:1.5fr 1fr 1fr 1fr;gap:14px;margin-bottom:20px}
+.tiles{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:14px;margin-bottom:20px}
 .tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 17px;box-shadow:var(--shadow)}
 .tile .lbl{margin-bottom:9px}
 .tile .big{font-family:var(--serif);font-weight:600;font-size:2.35rem;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
@@ -75,10 +77,15 @@ select.month{background:var(--surface);border:1px solid var(--line-2);border-rad
 .delta.up{color:var(--pos)} .delta.down{color:var(--neg)}
 .val.pos{color:var(--pos)} .val.neg{color:var(--neg)}
 
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
 .panel h2{font-size:1.05rem;margin-bottom:14px;display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .panel h2 .aside{font-family:var(--mono);font-size:.78rem;color:var(--ink-3);font-weight:400}
+/* sin esto las filas flex no se encogen y desbordan en pantallas angostas.
+   Acotado a los hijos directos: la tabla necesita conservar su max-content. */
+.panel{min-width:0}
+.panel>div{min-width:0}
+.panel>div>span{min-width:0;overflow-wrap:anywhere}
 
 .donutwrap{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
 .donut{width:128px;height:128px;border-radius:50%;position:relative;flex:none}
@@ -97,6 +104,8 @@ select.month{background:var(--surface);border:1px solid var(--line-2);border-rad
 .barlabels{display:flex;gap:9px;margin-top:6px}
 .barlabels span{flex:1;text-align:center;font-size:.72rem;color:var(--ink-3);font-family:var(--mono)}
 
+.tblwrap{overflow-x:auto} /* la tabla scrollea dentro del panel, nunca la página */
+.tblwrap table{min-width:max-content}
 table{width:100%;border-collapse:collapse;font-size:.88rem}
 th{text-align:left;font-size:.7rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-3);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line-2)}
 td{padding:9px 10px;border-bottom:1px solid var(--line)}
@@ -141,15 +150,35 @@ td.r,th.r{text-align:right}
 .due{font-family:var(--mono);font-size:.8rem}
 .due.soon{color:var(--warn)} .due.now{color:var(--neg);font-weight:600}
 
+/* Las cifras en COP no se pueden partir: por debajo de esto, cuatro tiles
+   en fila desbordan. Mejor dos filas de dos que scroll horizontal. */
+@media (max-width:1300px){
+  .tiles{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .tile .big{font-size:2.1rem}
+}
 @media (max-width:820px){
-  .shell{grid-template-columns:1fr}
+  .shell{grid-template-columns:minmax(0,1fr)}
   .rail{position:static;height:auto;flex-direction:row;overflow-x:auto;border-right:0;border-bottom:1px solid var(--line);padding:12px}
   .brand{display:none}
   .railfoot{margin:0;flex-direction:row;align-items:center;padding:0 0 0 6px}
   .navlink{white-space:nowrap}
   main{padding:18px 16px 50px}
-  .tiles{grid-template-columns:1fr 1fr}
-  .grid2{grid-template-columns:1fr}
+  .tiles{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .grid2{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:430px){ /* celular en vertical */
+  .tiles{grid-template-columns:minmax(0,1fr)}
+  .tile .big{font-size:1.9rem}
+  main{padding:16px 12px 50px}
+  /* la dona y su leyenda lado a lado no caben: se apilan */
+  .donutwrap{gap:12px;flex-direction:column;align-items:flex-start}
+  .legend{min-width:0;width:100%}
+  .fld,.fld.grow{flex:1 1 100%;min-width:0}
+  .fld input,.fld select{min-width:0;width:100%}
+  .formrow .btn{flex:1 1 100%}
+}
+@media (max-width:360px){ /* pantallas muy angostas: una cifra de 8 dígitos no cabe a 1.9rem */
+  .tile .big{font-size:1.55rem}
 }
 </style>
 
@@ -164,6 +193,7 @@ const INVCOL={accion:"var(--c2)",cuenta:"var(--c1)",cdt:"var(--c6)"};
 const INVLBL={accion:"Acciones",cuenta:"Cuentas",cdt:"CDT"};
 const fmt=new Intl.NumberFormat("es-CO",{style:"currency",currency:"COP",maximumFractionDigits:0});
 const fmt2=new Intl.NumberFormat("es-CO",{maximumFractionDigits:1});
+const fmtTasa=new Intl.NumberFormat("es-CO",{maximumFractionDigits:2}); // 9,25% no debe verse como 9,3%
 const uid=()=>Math.random().toString(36).slice(2,10);
 const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const $=s=>document.querySelector(s);
@@ -185,17 +215,35 @@ function load(){
     if(raw&&!raw.seed&&Array.isArray(raw.movimientos)){
       state=Object.assign(defaults(),raw);
       state.tarjetas||=[];state.inversiones||=[];state.movimientos||=[];
+      migrarInversiones();
     }
   }catch(e){console.warn("datos ilegibles",e);}
 }
+// Las cuentas y CDT pasaron de "invertido/valor actual" a "saldo + tasa E.A.".
+// Convierte los registros viejos para que nada quede en cero.
+function migrarInversiones(){
+  state.inversiones.forEach(i=>{
+    if(i.tipo!=="cuenta"&&i.tipo!=="cdt")return;
+    if(i.saldo!==undefined)return; // ya migrada
+    i.saldo=+i.valorActual||0;
+    i.aportado=+i.montoInvertido||i.saldo;
+    i.interesAcumulado=Math.max(0,i.saldo-i.aportado);
+    i.tasaEA=+i.tasaEA||0;
+    i.fechaSaldo=i.fechaActualizacion||todayISO();
+    delete i.valorActual;delete i.montoInvertido;
+  });
+}
 // La sección y el mes viven en sessionStorage: al guardar, el visor recarga
 // la página con la versión nueva, y sin esto siempre caerías en Resumen.
-const ui={section:"resumen",month:nowMonth(),editId:null};
+const ui={section:"resumen",month:nowMonth(),editId:null,mesElegido:false};
 try{const s=JSON.parse(sessionStorage.getItem("ui-finanzas")||"null");
   if(s&&s.section)ui.section=s.section;
-  if(s&&/^\d{4}-\d{2}$/.test(s.month||""))ui.month=s.month;
+  // Solo se respeta el mes guardado si Julián lo eligió a mano. Si venía del
+  // valor por defecto, manda el mes de hoy: si no, al cambiar de mes con la
+  // pestaña abierta el dashboard se quedaría mostrando el mes anterior.
+  if(s&&s.mesElegido&&/^\d{4}-\d{2}$/.test(s.month||"")){ui.month=s.month;ui.mesElegido=true;}
 }catch(e){}
-function saveUi(){try{sessionStorage.setItem("ui-finanzas",JSON.stringify({section:ui.section,month:ui.month}));}catch(e){}}
+function saveUi(){try{sessionStorage.setItem("ui-finanzas",JSON.stringify({section:ui.section,month:ui.month,mesElegido:ui.mesElegido}));}catch(e){}}
 
 // ---- persistence via artifact capability ----
 const HEAD='<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Libro de finanzas</title>'
@@ -260,7 +308,38 @@ const ingresosDe=mk=>state.movimientos.filter(m=>m.tipo==="ingreso"&&inMonth(m,m
 const sum=a=>a.reduce((s,m)=>s+(+m.monto||0),0);
 const mkDate=mk=>{const[y,m]=mk.split("-").map(Number);return new Date(y,m-1,1);}; // 1º del mes, hora local
 const prevMonth=mk=>{const d=mkDate(mk);d.setMonth(d.getMonth()-1);return dYM(d);};
-function patrimonio(){return sum(state.inversiones.map(i=>({monto:i.valorActual})))-sum(state.tarjetas.map(t=>({monto:t.saldo})));}
+// ---- renta fija (cuentas y CDT) ----
+// El saldo confirmado + la tasa E.A. dan una estimación del valor de hoy.
+// Es estimación, no verdad: entre actualizaciones la cuenta puede haberse movido.
+const esFija=i=>i.tipo==="cuenta"||i.tipo==="cdt";
+const diaISO=s=>{const[y,m,d]=String(s||"").split("-").map(Number);return (y&&m&&d)?new Date(y,m-1,d):null;}; // local, no UTC
+function diasEntre(desdeISO,hastaDate){
+  const a=diaISO(desdeISO); if(!a)return 0;
+  const b=hastaDate||new Date(); b.setHours(0,0,0,0);
+  return Math.max(0,Math.round((b-a)/86400000));
+}
+// valor de un capital a tasa efectiva anual tras n días
+const capitaliza=(capital,tasaEA,dias)=>capital*Math.pow(1+(+tasaEA||0)/100,dias/365);
+function interesCausado(i){ // interés estimado desde el último saldo confirmado
+  if(!esFija(i))return 0;
+  const hasta=i.vencimiento&&diaISO(i.vencimiento)<new Date()?diaISO(i.vencimiento):null; // un CDT deja de causar al vencer
+  const dias=hasta?diasEntre(i.fechaSaldo,hasta):diasEntre(i.fechaSaldo);
+  return capitaliza(+i.saldo||0,i.tasaEA,dias)-(+i.saldo||0);
+}
+// lo que vale hoy una posición, sea renta fija o acción
+function valorHoy(i){return esFija(i)?(+i.saldo||0)+interesCausado(i):(+i.valorActual||0);}
+// capital neto puesto por Julián: para renta fija son los aportes, para acciones lo invertido
+function aportadoDe(i){return esFija(i)?(+i.aportado||0):(+i.montoInvertido||0);}
+// todo lo ganado: lo ya reconocido al actualizar saldos + lo que se ha causado desde entonces
+function interesTotal(i){return esFija(i)?(+i.interesAcumulado||0)+interesCausado(i):(+i.valorActual||0)-(+i.montoInvertido||0);}
+function valorAlVencimiento(i){
+  if(i.tipo!=="cdt"||!i.vencimiento)return null;
+  return capitaliza(+i.saldo||0,i.tasaEA,diasEntre(i.fechaSaldo,diaISO(i.vencimiento)));
+}
+const diasSinConfirmar=i=>esFija(i)?diasEntre(i.fechaSaldo):diasEntre(i.fechaActualizacion);
+const DESACTUALIZADA=30;
+
+function patrimonio(){return sum(state.inversiones.map(i=>({monto:valorHoy(i)})))-sum(state.tarjetas.map(t=>({monto:t.saldo})));}
 function tarjetaSaldos(){ // recompute from movimientos so imports/edits stay consistent
   const s={};state.tarjetas.forEach(t=>s[t.id]=0);
   state.movimientos.forEach(m=>{
@@ -318,12 +397,12 @@ function vResumen(){
   const mk=ui.month, pk=prevMonth(mk);
   const ing=sum(ingresosDe(mk)), gas=sum(gastosDe(mk)), bal=ing-gas;
   const tasa=ing?bal/ing*100:0;
-  const activos=sum(state.inversiones.map(i=>({monto:i.valorActual})));
+  const activos=sum(state.inversiones.map(i=>({monto:valorHoy(i)})));
   const deudas=sum(state.tarjetas.map(t=>({monto:t.saldo})));
   const pat=activos-deudas;
   const catParts=CATS.map(c=>({n:c,c:CCOL[c],v:sum(gastosDe(mk).filter(m=>m.categoria===c))}));
-  const invInv=sum(state.inversiones.map(i=>({monto:i.montoInvertido}))), invVal=sum(state.inversiones.map(i=>({monto:i.valorActual})));
-  const gan=invVal-invInv;
+  const invInv=sum(state.inversiones.map(i=>({monto:aportadoDe(i)}))), invVal=sum(state.inversiones.map(i=>({monto:valorHoy(i)})));
+  const gan=sum(state.inversiones.map(i=>({monto:interesTotal(i)})));
   // tendencia 6 meses
   const months=[];const d=mkDate(mk);for(let i=5;i>=0;i--){months.push(dYM(new Date(d.getFullYear(),d.getMonth()-i,1)));}
   const tr=months.map(k=>({k,in:sum(ingresosDe(k)),out:sum(gastosDe(k))}));
@@ -348,9 +427,9 @@ function vResumen(){
      +'<div class="barlabels">'+tr.map(t=>'<span>'+t.k.slice(5)+'</span>').join("")+'</div>'
      +'<div class="hint"><span style="color:var(--pos)">■</span> ingresos &nbsp; <span style="color:var(--neg)">■</span> gastos</div></div>'
    +'<div class="panel"><h2>Inversiones y cuentas</h2>'
-     +row2("Invertido / aportado",fmt.format(invInv))
-     +row2("Valor actual",fmt.format(invVal))
-     +row2("Ganancia / pérdida",fmt.format(gan)+"  ("+(invInv?fmt2.format(gan/invInv*100):"0")+"%)",gan>=0?"pos":"neg")
+     +row2("Aportado / invertido",fmt.format(invInv))
+     +row2("Valor hoy",fmt.format(invVal))
+     +row2("Ganancia acumulada",fmt.format(gan)+"  ("+(invInv?fmt2.format(gan/invInv*100):"0")+"%)",gan>=0?"pos":"neg")
      +'<div class="hint">'+state.inversiones.length+' posiciones. Detalle en la sección.</div></div>'
    +'<div class="panel"><h2>Tarjetas</h2>'
      +(state.tarjetas.length?state.tarjetas.map(t=>{const nd=nextPayDate(t.diaPago),du=daysUntil(nd);
@@ -365,7 +444,7 @@ function vResumen(){
 function tile(l,v,sub,cls){return '<div class="tile"><div class="lbl">'+esc(l)+'</div><div class="big num '+(cls?("val "+cls):"")+'">'+v+'</div>'+(sub?'<div class="sub">'+esc(sub)+'</div>':"")+'</div>';}
 function row2(l,v,cls){return '<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line)"><span style="color:var(--ink-2)">'+esc(l)+'</span><span class="num '+(cls?("val "+cls):"")+'">'+v+'</span></div>';}
 function tbl(cols,rows,rAlign){
-  return '<div class="panel" style="padding:6px 6px"><table><thead><tr>'+cols.map((c,i)=>'<th class="'+((rAlign&&rAlign[i])?"r":"")+'">'+esc(c)+'</th>').join("")+'</tr></thead><tbody>'
+  return '<div class="panel tblwrap" style="padding:6px 6px"><table><thead><tr>'+cols.map((c,i)=>'<th class="'+((rAlign&&rAlign[i])?"r":"")+'">'+esc(c)+'</th>').join("")+'</tr></thead><tbody>'
    +rows.map(r=>'<tr>'+r.map((c,i)=>'<td class="'+((rAlign&&rAlign[i])?"r":"")+'">'+c+'</td>').join("")+'</tr>').join("")+'</tbody></table></div>';
 }
 
@@ -430,33 +509,113 @@ function vIngresos(){
 
 function vInv(){
   const e=ui.editId?state.inversiones.find(i=>i.id===ui.editId):null;
-  const tot=sum(state.inversiones.map(i=>({monto:i.valorActual})))||1;
-  const byType=["cuenta","cdt","accion"].map(t=>({n:INVLBL[t],c:INVCOL[t],v:sum(state.inversiones.filter(i=>i.tipo===t).map(i=>({monto:i.valorActual})))}));
-  const list=state.inversiones.slice().sort((a,b)=>b.valorActual-a.valorActual);
+  const tipoForm=ui.invTipo||(e?e.tipo:"cuenta"); // el formulario cambia según el tipo
+  const fija=tipoForm!=="accion";
+  const tot=sum(state.inversiones.map(i=>({monto:valorHoy(i)})))||1;
+  const byType=["cuenta","cdt","accion"].map(t=>({n:INVLBL[t],c:INVCOL[t],
+    v:sum(state.inversiones.filter(i=>i.tipo===t).map(i=>({monto:valorHoy(i)})))}));
+  const fijas=state.inversiones.filter(esFija).sort((a,b)=>valorHoy(b)-valorHoy(a));
+  const acciones=state.inversiones.filter(i=>!esFija(i)).sort((a,b)=>valorHoy(b)-valorHoy(a));
+  const totAportado=sum(state.inversiones.map(i=>({monto:aportadoDe(i)})));
+  const totValor=sum(state.inversiones.map(i=>({monto:valorHoy(i)})));
+  const totGanancia=sum(state.inversiones.map(i=>({monto:interesTotal(i)})));
+
+  const campos=fija
+    ? fld("Saldo hoy",'<input class="num" name="saldo" inputmode="numeric" required value="'+(e?e.saldo:"")+'">')
+      +fld("Fecha del saldo",'<input type="date" name="fechaSaldo" required value="'+esc(e?e.fechaSaldo:todayISO())+'">')
+      +fld("Tasa E.A. (%)",'<input class="num" name="tasaEA" inputmode="decimal" placeholder="Ej. 11,5" required value="'+(e?e.tasaEA:"")+'">')
+      +(tipoForm==="cdt"?fld("Vence el",'<input type="date" name="vencimiento" value="'+esc(e?e.vencimiento:"")+'">'):"")
+    : fld("Invertido",'<input class="num" name="montoInvertido" inputmode="numeric" required value="'+(e?e.montoInvertido:"")+'">')
+      +fld("Valor actual",'<input class="num" name="valorActual" inputmode="numeric" required value="'+(e?e.valorActual:"")+'">');
+
   return '<div class="topbar"><h1>Inversiones y cuentas</h1></div>'
   +'<form class="formcard" data-form="inv"><div class="formrow">'
-   +fld("Nombre",'<input name="nombre" placeholder="Ej. Cuenta ahorros, CDT Bancolombia, TIN" required value="'+esc(e?e.nombre:"")+'">',"grow")
-   +fld("Tipo",'<select name="tipo"><option value="cuenta"'+(e&&e.tipo==="cuenta"?" selected":"")+'>Cuenta</option><option value="cdt"'+(e&&e.tipo==="cdt"?" selected":"")+'>CDT</option><option value="accion"'+(e&&e.tipo==="accion"?" selected":"")+'>Acción / fondo</option></select>')
-   +fld("Invertido / aportado",'<input class="num" name="montoInvertido" inputmode="numeric" required value="'+(e?e.montoInvertido:"")+'">')
-   +fld("Valor actual",'<input class="num" name="valorActual" inputmode="numeric" required value="'+(e?e.valorActual:"")+'">')
+   +fld("Nombre",'<input name="nombre" placeholder="Ej. Cuenta Nu, CDT Bancolombia, TIN" required value="'+esc(e?e.nombre:"")+'">',"grow")
+   +fld("Tipo",'<select name="tipo" data-act="invtipo">'
+     +'<option value="cuenta"'+(tipoForm==="cuenta"?" selected":"")+'>Cuenta de ahorros</option>'
+     +'<option value="cdt"'+(tipoForm==="cdt"?" selected":"")+'>CDT</option>'
+     +'<option value="accion"'+(tipoForm==="accion"?" selected":"")+'>Acción / fondo</option></select>')
+   +campos
    +fld("Nota",'<input name="nota" placeholder="opcional" value="'+esc(e?e.nota:"")+'">')
    +'<button class="btn" type="submit">'+(e?"Guardar cambios":"Agregar")+'</button>'
    +(e?'<button class="btn ghost" type="button" data-act="canceledit">Cancelar</button>':"")
-  +'</div><div class="hint">Para cuentas y CDT, «invertido» y «valor actual» suelen ir iguales (más intereses). El valor de acciones lo actualiza el agente mensual o tú.</div></form>'
+  +'</div><div class="hint">'+(fija
+     ? 'El valor de hoy se estima con la tasa desde la fecha del saldo. Cuando confirmes el saldo real en tu banco, usa «Actualizar saldo».'
+     : 'El valor actual lo actualiza el agente mensual, o tú con la foto de tu portafolio.')+'</div></form>'
+
   +'<div class="grid2"><div class="panel"><h2>Distribución por tipo</h2><div class="donutwrap">'+donut(byType.map(p=>({v:p.v,c:p.c})))+legend(byType)+'</div></div>'
    +'<div class="panel"><h2>Totales</h2>'
-     +row2("Invertido / aportado",fmt.format(sum(state.inversiones.map(i=>({monto:i.montoInvertido})))))
-     +row2("Valor actual",fmt.format(sum(state.inversiones.map(i=>({monto:i.valorActual})))))
-     +(function(){const ii=sum(state.inversiones.map(i=>({monto:i.montoInvertido}))),vv=sum(state.inversiones.map(i=>({monto:i.valorActual})));return row2("Ganancia / pérdida",fmt.format(vv-ii)+" ("+(ii?fmt2.format((vv-ii)/ii*100):"0")+"%)",vv-ii>=0?"pos":"neg");})()
+     +row2("Aportado / invertido",fmt.format(totAportado))
+     +row2("Valor hoy",fmt.format(totValor))
+     +row2("Ganancia acumulada",fmt.format(totGanancia)+" ("+(totAportado?fmt2.format(totGanancia/totAportado*100):"0")+"%)",totGanancia>=0?"pos":"neg")
+     +'<div class="hint">La ganancia de cuentas y CDT es interés causado; el de acciones es valorización.</div>'
    +'</div></div>'
-  +'<div class="sectionhead"><h2>Posiciones</h2></div>'
-  +(list.length?tbl(["Nombre","Tipo","Invertido","Valor actual","Rend.","Peso",""],list.map(i=>{
+
+  +'<div class="sectionhead"><h2>Cuentas y CDT</h2></div>'
+  +(fijas.length?tbl(["Nombre","Saldo base","Tasa E.A.","Interés ganado","Valor hoy","Peso",""],fijas.map(i=>{
+      // en un CDT el capital está quieto: la estimación es exacta y no hay nada que confirmar
+      const ganado=interesTotal(i), vHoy=valorHoy(i);
+      const viejo=i.tipo==="cuenta"&&diasSinConfirmar(i)>=DESACTUALIZADA;
+      const venc=valorAlVencimiento(i), dias=i.vencimiento?daysUntil(diaISO(i.vencimiento)):null;
+      const detalle=(i.nota?esc(i.nota)+". ":"")
+        +"Saldo del "+esc(i.fechaSaldo||"—")
+        +(venc!==null?" · vence "+esc(i.vencimiento)+(dias>0?" (en "+dias+" días, "+fmt.format(venc)+")":" (vencido)"):"");
+      return [esc(i.nombre)+(viejo?' <span class="tag" style="color:var(--warn)">sin confirmar hace '+diasSinConfirmar(i)+'d</span>':"")
+        +'<div class="hint">'+detalle+'</div>',
+       '<span class="num">'+fmt.format(i.saldo||0)+'</span>',
+       '<span class="num">'+fmtTasa.format(+i.tasaEA||0)+'%</span>',
+       '<span class="num val '+(ganado>=0?"pos":"neg")+'">'+fmt.format(ganado)+'</span>',
+       '<span class="num">'+fmt.format(vHoy)+'</span>',
+       '<span class="num">'+(vHoy/tot*100).toFixed(0)+'%</span>',
+       '<button class="rowbtn" data-act="actsaldo" data-id="'+i.id+'">actualizar saldo</button>'
+       +'<button class="rowbtn" data-act="editinv" data-id="'+i.id+'">editar</button>'
+       +'<button class="rowbtn" data-act="delinv" data-id="'+i.id+'">✕</button>'];
+    }),[0,1,1,1,1,1,1])
+   :'<div class="empty">Agrega tus cuentas de ahorro y CDT arriba, con su tasa E.A.</div>')
+
+  +'<div class="sectionhead"><h2>Acciones y fondos</h2></div>'
+  +(acciones.length?tbl(["Nombre","Invertido","Valor actual","Rend.","Peso",""],acciones.map(i=>{
       const r=i.montoInvertido?(i.valorActual-i.montoInvertido)/i.montoInvertido*100:0;
-      return [esc(i.nombre)+(i.sinDato?' <span class="tag" style="color:var(--warn)">sin dato</span>':"")+(i.nota?'<div class="hint">'+esc(i.nota)+'</div>':""),
-       '<span class="tag">'+INVLBL[i.tipo]+'</span>','<span class="num">'+fmt.format(i.montoInvertido)+'</span>','<span class="num">'+fmt.format(i.valorActual)+'</span>',
-       '<span class="num val '+(r>=0?"pos":"neg")+'">'+fmt2.format(r)+'%</span>','<span class="num">'+(i.valorActual/tot*100).toFixed(0)+'%</span>',
+      const viejo=diasSinConfirmar(i)>=DESACTUALIZADA;
+      return [esc(i.nombre)+(viejo?' <span class="tag" style="color:var(--warn)">sin actualizar hace '+diasSinConfirmar(i)+'d</span>':"")+(i.nota?'<div class="hint">'+esc(i.nota)+'</div>':""),
+       '<span class="num">'+fmt.format(i.montoInvertido||0)+'</span>','<span class="num">'+fmt.format(i.valorActual||0)+'</span>',
+       '<span class="num val '+(r>=0?"pos":"neg")+'">'+fmt2.format(r)+'%</span>',
+       '<span class="num">'+(valorHoy(i)/tot*100).toFixed(0)+'%</span>',
        '<button class="rowbtn" data-act="editinv" data-id="'+i.id+'">editar</button><button class="rowbtn" data-act="delinv" data-id="'+i.id+'">✕</button>'];
-    }),[0,0,1,1,1,1,1]):'<div class="empty">Agrega tus cuentas, CDT y acciones arriba.</div>');
+    }),[0,1,1,1,1,1])
+   :'<div class="empty">Sin acciones ni fondos registrados.</div>');
+}
+
+// Actualizar saldo: propone el interés que la tasa predice y deja corregirlo
+// con el número real del banco. Lo que sobra de la diferencia es aporte o retiro.
+function actualizarSaldo(id){
+  const i=state.inversiones.find(x=>x.id===id); if(!i||!esFija(i))return;
+  const previsto=Math.round(interesCausado(i)), saldoAnt=+i.saldo||0, dias=diasEntre(i.fechaSaldo);
+  modal('<h2>Actualizar '+esc(i.nombre)+'</h2>'
+   +'<p class="sub">Último saldo confirmado: '+fmt.format(saldoAnt)+' el '+esc(i.fechaSaldo||"—")+' ('+dias+' días).</p>'
+   +'<div class="formrow">'
+    +fld("Saldo real hoy",'<input class="num" id="as-saldo" inputmode="numeric" value="'+saldoAnt+'">')
+    +fld("Interés ganado",'<input class="num" id="as-interes" inputmode="numeric" value="'+previsto+'">')
+   +'</div>'
+   +'<div class="hint">La tasa predice '+fmt.format(previsto)+' de interés en esos días. Corrígelo si tu banco te muestra otro número.</div>'
+   +'<div class="msg warn" id="as-delta" style="margin-top:12px"></div>'
+   +'<div class="acts"><button class="btn ghost" data-act="closemodal">Cancelar</button><button class="btn" id="as-go">Guardar</button></div>');
+  const $s=$("#as-saldo"), $i=$("#as-interes"), $d=$("#as-delta");
+  const leer=v=>Math.round(parseFloat(String(v).replace(/[^\d,.-]/g,"").replace(/\.(?=\d{3}\b)/g,"").replace(",","."))||0);
+  function pintar(){
+    const nuevo=leer($s.value), inter=leer($i.value), mov=nuevo-saldoAnt-inter;
+    $d.textContent=Math.abs(mov)<1
+      ? "Todo el cambio es interés. No se registra aporte ni retiro."
+      : (mov>0?"Se registra un aporte de "+fmt.format(mov):"Se registra un retiro de "+fmt.format(-mov));
+  }
+  $s.oninput=pintar; $i.oninput=pintar; pintar();
+  $("#as-go").onclick=()=>{
+    const nuevo=leer($s.value), inter=leer($i.value), mov=nuevo-saldoAnt-inter;
+    i.saldo=nuevo; i.fechaSaldo=todayISO();
+    i.interesAcumulado=(+i.interesAcumulado||0)+inter;
+    i.aportado=(+i.aportado||0)+mov;
+    closeModal(); commit();
+  };
 }
 
 function vTarj(){
@@ -491,10 +650,12 @@ document.addEventListener("click",e=>{
   if(act==="zoom"||act==="nav"||act==="gmail"||act==="pagar")e.preventDefault();
   switch(act){
     case"nav":ui.section=a.dataset.s;ui.editId=null;render();break;
-    case"canceledit":ui.editId=null;render();break;
+    case"canceledit":ui.editId=null;ui.invTipo=null;render();break;
     case"edit":{const m=state.movimientos.find(x=>x.id===a.dataset.id);if(!m)break;
       ui.editId=m.id;ui.section=m.tipo==="ingreso"?"ingresos":"gastos";render();scrollTo(0,0);break;}
-    case"editinv":ui.editId=a.dataset.id;ui.section="inversiones";render();scrollTo(0,0);break;
+    case"editinv":{const inv=state.inversiones.find(x=>x.id===a.dataset.id);
+      ui.editId=a.dataset.id;ui.invTipo=inv?inv.tipo:null;ui.section="inversiones";render();scrollTo(0,0);break;}
+    case"actsaldo":actualizarSaldo(a.dataset.id);break;
     case"del":if(confirm("¿Eliminar este movimiento?")){state.movimientos=state.movimientos.filter(m=>m.id!==a.dataset.id);commit();}break;
     case"delinv":if(confirm("¿Eliminar esta posición?")){state.inversiones=state.inversiones.filter(i=>i.id!==a.dataset.id);commit();}break;
     case"deltarj":{const t=state.tarjetas.find(x=>x.id===a.dataset.id);
@@ -510,7 +671,8 @@ document.addEventListener("click",e=>{
   }
 });
 document.addEventListener("change",e=>{
-  const s=e.target.closest('select[data-act="month"]');if(s){ui.month=s.value;ui.editId=null;render();}
+  const s=e.target.closest('select[data-act="month"]');if(s){ui.month=s.value;ui.mesElegido=true;ui.editId=null;render();}
+  const t=e.target.closest('select[data-act="invtipo"]');if(t){ui.invTipo=t.value;render();} // cambian los campos
 });
 document.addEventListener("submit",async e=>{
   const f=e.target.closest("form[data-form]");if(!f)return;e.preventDefault();
@@ -526,10 +688,27 @@ document.addEventListener("submit",async e=>{
     else{rec.id=uid();rec.fuente="manual";if(img)rec.imagen=img;state.movimientos.push(rec);}
     f.reset();commit();
   }else if(kind==="inv"){
-    const rec={nombre:(d.nombre||"").trim(),tipo:d.tipo,montoInvertido:money(d.montoInvertido),valorActual:money(d.valorActual),nota:(d.nota||"").trim(),fechaActualizacion:todayISO()};
-    if(ui.editId){Object.assign(state.inversiones.find(x=>x.id===ui.editId),rec);delete state.inversiones.find(x=>x.id===ui.editId).sinDato;ui.editId=null;}
-    else{rec.id=uid();state.inversiones.push(rec);}
-    f.reset();commit();
+    const base={nombre:(d.nombre||"").trim(),tipo:d.tipo,nota:(d.nota||"").trim(),fechaActualizacion:todayISO()};
+    const tasa=v=>Math.max(0,parseFloat(String(v||"").replace(",","."))||0);
+    const rec=(d.tipo==="accion")
+      ? Object.assign(base,{montoInvertido:money(d.montoInvertido),valorActual:money(d.valorActual)})
+      : Object.assign(base,{saldo:money(d.saldo),fechaSaldo:d.fechaSaldo||todayISO(),tasaEA:tasa(d.tasaEA),
+          vencimiento:(d.tipo==="cdt"&&d.vencimiento)?d.vencimiento:undefined});
+    if(ui.editId){
+      const prev=state.inversiones.find(x=>x.id===ui.editId);
+      // al editar se conserva lo ya ganado y aportado; el alta los inicializa
+      Object.assign(prev,rec); delete prev.sinDato;
+      if(d.tipo!=="accion"){prev.aportado=(+prev.aportado)||money(d.saldo);prev.interesAcumulado=(+prev.interesAcumulado)||0;
+        delete prev.montoInvertido;delete prev.valorActual;}
+      else {delete prev.saldo;delete prev.fechaSaldo;delete prev.tasaEA;delete prev.vencimiento;
+        delete prev.aportado;delete prev.interesAcumulado;}
+      ui.editId=null;
+    }else{
+      rec.id=uid();
+      if(d.tipo!=="accion"){rec.aportado=rec.saldo;rec.interesAcumulado=0;} // el saldo inicial es capital, no ganancia
+      state.inversiones.push(rec);
+    }
+    ui.invTipo=null; f.reset();commit();
   }else if(kind==="tarjeta"){
     const cl=n=>Math.min(31,Math.max(1,parseInt(n,10)||1));
     state.tarjetas.push({id:uid(),nombre:(d.nombre||"").trim(),diaCorte:cl(d.diaCorte),diaPago:cl(d.diaPago),saldo:0});
