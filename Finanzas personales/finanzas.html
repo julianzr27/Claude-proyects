@@ -566,7 +566,6 @@ function vResumen(){
   const mx=Math.max(1,...tr.flatMap(t=>[t.in,t.out]));
   const gPrev=sum(fCat?gastosDe(pk).filter(m=>m.categoria===fCat):gastosDe(pk));
   const top=gastosF.slice().sort((a,b)=>b.monto-a.monto).slice(0,5);
-  const saldos=tarjetaSaldos();
 
   return '<div class="topbar"><h1>Resumen</h1>'+monthPicker()+'</div>'
   +chipFiltro("cat","Categoría")
@@ -592,8 +591,16 @@ function vResumen(){
      +row2("Ganancia acumulada",fmt.format(gan)+"  ("+(invInv?fmt2.format(gan/invInv*100):"0")+"%)",gan>=0?"pos":"neg")
      +'<div class="hint">'+state.inversiones.length+' posiciones. Detalle en la sección.</div></div>'
    +'<div class="panel"><h2>Tarjetas</h2>'
-     +(state.tarjetas.length?state.tarjetas.map(t=>{const nd=nextPayDate(t.diaPago),du=daysUntil(nd);
-        return row2(esc(t.nombre),fmt.format(saldos[t.id]||0)+' <span class="due '+(du<=2?"now":du<=7?"soon":"")+'">· pago en '+du+'d</span>');}).join("")
+     +(state.tarjetas.length?state.tarjetas.map(t=>{
+        // El saldo total no es lo que cobran en el próximo pago: lo comprado
+        // después del corte se paga un mes más tarde. Sin separarlo, el resumen
+        // anunciaba como vencida hoy una compra que aún no han facturado.
+        const c=tarjetaCiclos(t), du=daysUntil(nextPayDate(t.diaPago));
+        const aviso=c.facturado<=0
+          ? '<span class="hint">· nada en este corte</span>'
+          : '<span class="due '+(du<=2?"now":du<=7?"soon":"")+'">· '
+            +(c.facturado<c.total?fmt.format(c.facturado)+" en ":"pago en ")+du+'d</span>';
+        return row2(esc(t.nombre),fmt.format(c.total)+' '+aviso);}).join("")
        :'<div class="hint">Sin tarjetas registradas.</div>')
    +'</div>'
   +'</div>'
