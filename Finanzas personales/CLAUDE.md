@@ -97,36 +97,56 @@ la interfaz con `javascript_tool`. Lo que conviene verificar en cada cambio:
   `sandbox="allow-scripts allow-same-origin"` (sin `allow-modals`), que es como
   se comporta el visor real.
 
-## Pendiente: Fase 2, el agente mensual
+## Fase 2: el agente quincenal de precios
 
-Crear una routine con el skill `schedule` que corra una vez al mes y:
+Montado el 2026-09-02 como routine de claude.ai, corriendo el 1 y el 16 de cada
+mes a las 9 a.m. de Bogotá (`0 14 1,16 * *` en UTC), con Opus y sin conectores:
+solo web. Lee el Artifact vivo, consulta precio por precio, aplica los datos con
+`merge-datos.js precios` y republica siguiendo el ciclo de arriba.
 
-1. Lea el Artifact vivo y saque la lista de posiciones tipo `accion`.
-2. Consulte el precio de cada una por web y la TRM oficial del día.
-3. Actualice `valorActual` y la fecha del precio de cada acción y `config.trm`,
-   siguiendo el ciclo de publicación descrito arriba.
-4. Deje marcada cualquier posición que no haya podido actualizar, sin inventar
-   el precio.
+**Routine:** https://claude.ai/code/routines/trig_018sJ8kkPugoZPHpwCHDun1f
 
-**Cobertura verificada el 2026-09-01.** Las ocho acciones son de la Bolsa de
-Valores de Colombia y todas se pueden obtener, pero de dos fuentes:
+El agente no edita el JSON del dashboard a mano — es una sola línea enorme y
+romperla borra datos. Escribe un reporte y deja que el script lo aplique:
+
+```
+node merge-datos.js precios finanzas.html reporte.json
+```
+
+```json
+{ "trm": 3184, "trmFecha": "2026-09-02",
+  "precios": { "ISA": {"precio": 29200, "fecha": "2026-09-02"} },
+  "sinDato": { "NUCO": "la fuente no respondió" } }
+```
+
+Las llaves son el `nombre` de la posición. El script multiplica por `cantidad`,
+guarda la **fecha del precio** (no la de hoy) en `fechaActualizacion`, limpia el
+`sinDato` de lo que sí se actualizó, y aborta si un precio viene en cero o una
+fecha mal formada: un dato que no se pudo traer se marca, nunca se rellena. Las
+cantidades, el costo y el historial no los toca nadie más que Julián.
+
+`node merge-datos.js selftest` ejercita todo eso sin tocar el archivo real.
+
+### Cobertura de las fuentes, verificada el 2026-09-01 y usada el 2026-09-02
 
 - `https://www.larepublica.co/indicadores-economicos/movimiento-accionario/<ticker>`
-  responde para PFGRUPOARG, ISA, GEB, CELSIA y EXITO. Da 404 para `suasco` y
-  `nuco`, y para `tin` carga la página sin precio.
+  responde para PFGRUPOARG (truncado así), ISA, GEB, CELSIA y EXITO. Da 404 para
+  `suasco` y `nuco`, y para `tin` carga la página sin precio.
 - `https://www.bloomberglinea.com/quote/<TICKER>:CB/` responde para SUASCO, TIN,
-  NUCO y también PFGRUPOA, así que probablemente sirva como fuente única con La
-  República de respaldo.
+  NUCO y también PFGRUPOA, así que sirve como fuente única con La República de
+  respaldo.
 - La TRM **oficial** sale de `https://www.dolar-colombia.com/`. No usar el spot
-  USDCOP de Bloomberg, que es otra cifra (3.167 contra 3.214 el mismo día).
+  USDCOP de Bloomberg, que es otra cifra.
 - `WebSearch` devuelve enlaces pero no precios; el que extrae los números es
   `WebFetch`.
 
 Siete de los ocho precios coincidieron exacto con lo que trii le mostraba a
-Julián. La excepción es TIN, un título de titularización poco líquido cuya
-última cotización puede tener varios días: por eso hay que guardar la fecha del
-precio y que el dashboard avise cuando el dato esté viejo, en vez de mostrarlo
-como si fuera de hoy.
+Julián. La excepción es TIN, un título de titularización poco líquido cuya última
+cotización puede tener varios días: por eso cada acción guarda la fecha de su
+precio, el dashboard la muestra bajo el nombre y saca una etiqueta de aviso
+pasados 30 días (`DESACTUALIZADA`), igual que cuando el precio no tiene fecha o
+el agente dejó un `sinDato`. La fecha de la TRM se pone en color de aviso con el
+mismo umbral.
 
 **Gmail no sirve para esto.** Se revisaron 38 correos de trii y accivalores de
 60 días: casi todos son marketing, y lo transaccional son avisos de dividendo,

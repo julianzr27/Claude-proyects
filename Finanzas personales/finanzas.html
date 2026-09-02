@@ -759,7 +759,9 @@ function vInv(){
   +(state.inversiones.some(esUSD)?'<div class="panel" style="margin-bottom:16px">'
      +(trmPendiente()?'<div class="msg warn">Aún no has confirmado el dólar de hoy. Mientras tanto se usa la TRM a la que compraste, así que el efecto cambiario aparece en cero. Actualízala para ver tu posición en dólares a valor real.</div>':"")
      +row2("Dólar usado para convertir (TRM)",fmt.format(TRM())
-        +(trmPendiente()?' <span class="hint" style="color:var(--warn)">sin confirmar</span>':' <span class="hint">del '+esc(state.config.trmFecha||"—")+'</span>'))
+        +(trmPendiente()?' <span class="hint" style="color:var(--warn)">sin confirmar</span>'
+          :' <span class="hint"'+(diasEntre(state.config.trmFecha)>=DESACTUALIZADA?' style="color:var(--warn)"':"")
+            +'>del '+esc(state.config.trmFecha||"—")+'</span>'))
      +'<div style="margin-top:10px"><button class="btn ghost sm" data-act="trm">Actualizar TRM</button></div></div>':"")
   +(fijas.length||!fInv?'<div class="sectionhead"><h2>Cuentas, efectivo y CDT'+(fInv?" · "+esc(fInv):"")+'</h2>'
    +'<button class="btn ghost sm" data-act="mover">Mover plata / retirar efectivo</button></div>'
@@ -799,15 +801,20 @@ function vInv(){
   +(acciones.length?tbl(["Nombre","Invertido","Valor actual","Ganancia","Rend.","Peso",""],acciones.map(i=>{
       const inv=+i.montoInvertido||0, act=+i.valorActual||0, gan=act-inv;
       const r=inv?gan/inv*100:0;
-      const viejo=diasSinConfirmar(i)>=DESACTUALIZADA;
+      // Sin fecha no se puede decir qué tan viejo está, pero tampoco se puede
+      // dar por bueno: se avisa igual, que es lo honesto.
+      const viejo=!i.fechaActualizacion?"precio sin fecha"
+        :diasSinConfirmar(i)>=DESACTUALIZADA?"precio de hace "+diasSinConfirmar(i)+" días":"";
       const anual=anualizado(i), fx=efectoDolar(i);
       const cant=cantidadDe(i);
       const detalle=[i.nota?esc(i.nota):"",
         fmt2.format(cant)+(cant===1?" acción":" acciones")+" a "+fmtMon(precioDe(i),i)+" c/u"
           +(inv>0?" · compradas a "+fmtMon(precioCompraDe(i),i):""),
+        i.fechaActualizacion?"Precio del "+esc(i.fechaActualizacion):"Precio sin fecha",
         i.fechaCompra?"Comprada el "+esc(i.fechaCompra)+(anual!==null?" · "+fmt2.format(anual)+"% anual equivalente":""):"",
         esUSD(i)?"El dólar "+(fx>=0?"sumó ":"restó ")+fmt.format(Math.abs(fx)):""].filter(Boolean).join(" · ");
-      return [esc(i.nombre)+(viejo?' <span class="tag" style="color:var(--warn)">sin actualizar hace '+diasSinConfirmar(i)+'d</span>':"")
+      return [esc(i.nombre)+(viejo?' <span class="tag" style="color:var(--warn)">'+esc(viejo)+'</span>':"")
+        +(i.sinDato?' <span class="tag" style="color:var(--warn)">'+esc(i.sinDato)+'</span>':"")
         +(detalle?'<div class="hint">'+detalle+'</div>':""),
        '<span class="num">'+fmtMon(inv,i)+'</span>','<span class="num">'+fmtMon(act,i)+'</span>',
        '<span class="num val '+(gan>=0?"pos":"neg")+'">'+fmtMon(gan,i)+'</span>',
