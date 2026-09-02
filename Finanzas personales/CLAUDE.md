@@ -99,17 +99,41 @@ la interfaz con `javascript_tool`. Lo que conviene verificar en cada cambio:
 
 ## Pendiente: Fase 2, el agente mensual
 
-Crear una routine con el skill `schedule` que corra cada mes y:
+Crear una routine con el skill `schedule` que corra una vez al mes y:
 
-1. Lea de Gmail los extractos recientes de trii y accivalores
-   (`from:(trii.co OR accivalores.com) newer_than:35d`).
-2. Complemente con búsqueda web el precio de las acciones con cotización
-   pública limpia, y la TRM del día.
-3. Actualice `valorActual` de cada acción y `config.trm` en el Artifact,
+1. Lea el Artifact vivo y saque la lista de posiciones tipo `accion`.
+2. Consulte el precio de cada una por web y la TRM oficial del día.
+3. Actualice `valorActual` y la fecha del precio de cada acción y `config.trm`,
    siguiendo el ciclo de publicación descrito arriba.
-4. Deje marcada cualquier posición que no haya podido actualizar.
+4. Deje marcada cualquier posición que no haya podido actualizar, sin inventar
+   el precio.
 
-Las acciones de Julián son de la Bolsa de Valores de Colombia (PFGRUPOARGOS,
-ISA, SUASCO, TIN, GEB, EXITO, CELSIA, NUCO), donde la cobertura de búsqueda web
-es irregular; los extractos del correo son la fuente más confiable. Plenti es
-una posición en dólares que rinde una tasa fija, así que no necesita precio.
+**Cobertura verificada el 2026-09-01.** Las ocho acciones son de la Bolsa de
+Valores de Colombia y todas se pueden obtener, pero de dos fuentes:
+
+- `https://www.larepublica.co/indicadores-economicos/movimiento-accionario/<ticker>`
+  responde para PFGRUPOARG, ISA, GEB, CELSIA y EXITO. Da 404 para `suasco` y
+  `nuco`, y para `tin` carga la página sin precio.
+- `https://www.bloomberglinea.com/quote/<TICKER>:CB/` responde para SUASCO, TIN,
+  NUCO y también PFGRUPOA, así que probablemente sirva como fuente única con La
+  República de respaldo.
+- La TRM **oficial** sale de `https://www.dolar-colombia.com/`. No usar el spot
+  USDCOP de Bloomberg, que es otra cifra (3.167 contra 3.214 el mismo día).
+- `WebSearch` devuelve enlaces pero no precios; el que extrae los números es
+  `WebFetch`.
+
+Siete de los ocho precios coincidieron exacto con lo que trii le mostraba a
+Julián. La excepción es TIN, un título de titularización poco líquido cuya
+última cotización puede tener varios días: por eso hay que guardar la fecha del
+precio y que el dashboard avise cuando el dato esté viejo, en vez de mostrarlo
+como si fuera de hoy.
+
+**Gmail no sirve para esto.** Se revisaron 38 correos de trii y accivalores de
+60 días: casi todos son marketing, y lo transaccional son avisos de dividendo,
+confirmaciones de compra puntuales y PDFs de accivalores con el tiquete de una
+sola operación. Ningún correo trae el valor de las posiciones. Lo que sí hay ahí
+y hoy no se registra son los dividendos (TIN pagó 4 acciones a 383,72 antes de
+retención), que valdría la pena capturar aparte.
+
+Plenti es una posición en dólares que rinde una tasa fija, así que no necesita
+precio: solo la TRM.
