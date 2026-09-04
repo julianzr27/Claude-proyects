@@ -104,6 +104,38 @@ la interfaz con `javascript_tool`. Lo que conviene verificar en cada cambio:
   `sandbox="allow-scripts allow-same-origin"` (sin `allow-modals`), que es como
   se comporta el visor real.
 
+`node test-parser.js finanzas.html` ejercita el parser de Gmail con textos
+reales de correos de Julián. No copia el código: lo recorta del archivo y lo
+evalúa, así que no puede quedar probando una versión vieja.
+
+## El parser de Gmail
+
+El botón «Sincronizar Gmail» propone gastos y Julián los revisa antes de
+importar. La revisión no es un trámite: es lo que atrapa lo que el parser no
+puede saber. Tres reglas que costaron sangre y están cubiertas por el test:
+
+- **El punto separa miles, no decimales.** `$5.000` son cinco mil. Hasta el
+  2026-09-04 la conversión devolvía `5`, así que todo monto redondo entraba
+  dividido por mil. Lo único que se lee como decimal es un punto seguido de uno
+  o dos dígitos (`107500.00`), que es como manda los montos ePayco.
+- **El monto rotulado gana sobre el más grande.** Uber manda «Total $6.985 ·
+  Tarifa $9.313 · Promoción −$2.328»; quedarse con el máximo cobraba la tarifa
+  sin el descuento. Solo si no hay ningún `Total`/`Monto`/`Valor` se cae al
+  máximo.
+- **Un correo con monto no es un gasto.** Los avisos de «faltan fondos» de Nu y
+  los extractos traen cifras y comercio y se ven igual que una compra. Van en
+  `NO_ES_GASTO` y ni siquiera llegan a la tabla de revisión.
+
+El medio de pago sale del nombre que Julián le puso a la tarjeta o la cuenta
+(`medioPorTexto`): si el remitente o el asunto lo menciona, es esa, y las
+tarjetas ganan porque un cargo llega por la tarjeta aunque el correo nombre al
+banco. Palabras genéricas como «banco» o «ahorro» no cuentan.
+
+**Lo que el parser no resuelve y hay que mirar en la revisión:** un mismo gasto
+llega por dos remitentes (el Airbnb de noviembre aparece como recibo de Airbnb
+y como cargo de RappiCard), y un PSE puede ser tanto un servicio como el pago
+de una tarjeta, que no es gasto.
+
 ## Fase 2: el agente quincenal de precios
 
 Montado el 2026-09-02 como routine de claude.ai, corriendo el 1 y el 16 de cada
