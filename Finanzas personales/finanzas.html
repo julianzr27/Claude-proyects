@@ -354,19 +354,25 @@ const esCuenta=i=>i.tipo==="cuenta"||i.tipo==="efectivo"; // de donde sale y ent
 // Un movimiento ya está dentro del saldo confirmado si ocurrió antes de la fecha
 // del ancla, o si se registró antes de confirmarlo. Hace falta lo segundo porque
 // un gasto de hoy y un saldo de hoy no se distinguen solo por fecha.
-function movNeto(id,desdeISO,anclaTs){
-  const corte=diaISO(desdeISO);
-  return state.movimientos.reduce((s,m)=>{
-    if(corte&&diaISO(m.fecha)&&diaISO(m.fecha)<corte)return s;
-    if(anclaTs&&m.ts&&m.ts<=anclaTs)return s;
+// Lo que se movió después del ancla, con su fecha. Es la fuente única: movNeto
+// los suma y el interés los usa para capitalizar por tramos. Separarlas invitaría
+// a que el saldo y su rendimiento contaran movimientos distintos.
+function movsDe(id,desdeISO,anclaTs){
+  const corte=diaISO(desdeISO), out=[];
+  state.movimientos.forEach(m=>{
+    if(corte&&diaISO(m.fecha)&&diaISO(m.fecha)<corte)return;
+    if(anclaTs&&m.ts&&m.ts<=anclaTs)return;
     const v=+m.monto||0;
-    if(m.tipo==="traslado")return s+(m.hacia===id?v:0)-(m.desde===id?v:0);
-    if(m.tipo==="ingreso"&&m.medio===id)return s+v;
-    if(m.tipo==="gasto"&&m.medio===id)return s-v;      // un gasto con tarjeta no entra: su medio es la tarjeta
-    if(m.tipo==="pago_tarjeta"&&m.desde===id)return s-v;
-    return s;
-  },0);
+    let d=0;
+    if(m.tipo==="traslado")d=(m.hacia===id?v:0)-(m.desde===id?v:0);
+    else if(m.tipo==="ingreso"&&m.medio===id)d=v;
+    else if(m.tipo==="gasto"&&m.medio===id)d=-v;        // un gasto con tarjeta no entra: su medio es la tarjeta
+    else if(m.tipo==="pago_tarjeta"&&m.desde===id)d=-v;
+    if(d)out.push({fecha:m.fecha,delta:d});
+  });
+  return out;
 }
+function movNeto(id,desdeISO,anclaTs){return movsDe(id,desdeISO,anclaTs).reduce((s,m)=>s+m.delta,0);}
 function billeteraEfectivo(){ // se crea sola la primera vez que se necesita
   let b=state.inversiones.find(i=>i.id===ID_EFECTIVO);
   if(!b){b={id:ID_EFECTIVO,nombre:"Efectivo",tipo:"efectivo",saldo:0,fechaSaldo:todayISO(),aportado:0,interesAcumulado:0,anclaTs:0};
@@ -379,14 +385,28 @@ const cuentasDisponibles=()=>state.inversiones.filter(c=>esCuenta(c)&&!esUSD(c))
 // Los traslados alcanzan a todo lo que lleva saldo: incluye el CDT, porque al
 // vencer la plata vuelve a una cuenta y eso es un movimiento, no una ganancia.
 const cuentasParaTraslado=()=>state.inversiones.filter(esFija);
-// ponytail: el interés se calcula sobre el saldo anclado, ignorando los movimientos
-// del periodo. Se corrige al confirmar el saldo real; si algún día importa la
-// precisión intermedia, habría que capitalizar día a día sobre el saldo corriente.
+// El banco capitaliza sobre el saldo corriente: una consignación empieza a rendir
+// el día que entra y un retiro deja de rendir el día que sale. Por eso el periodo
+// se parte en tramos y cada uno capitaliza sobre el saldo que había en ese tramo,
+// en vez de sobre el saldo anclado. Sin esto el interés se queda corto cuando
+// entra plata y se pasa cuando sale.
 function interesCausado(i){ // interés estimado desde el último saldo confirmado
   if(!esFija(i))return 0;
   const hasta=i.vencimiento&&diaISO(i.vencimiento)<new Date()?diaISO(i.vencimiento):null; // un CDT deja de causar al vencer
-  const dias=hasta?diasEntre(i.fechaSaldo,hasta):diasEntre(i.fechaSaldo);
-  return capitaliza(+i.saldo||0,i.tasaEA,dias)-(+i.saldo||0);
+  const total=hasta?diasEntre(i.fechaSaldo,hasta):diasEntre(i.fechaSaldo);
+  // los movimientos se guardan en pesos; una posición en dólares los convierte
+  const tramos=movsDe(i.id,i.fechaSaldo,i.anclaTs)
+    .map(m=>({d:Math.min(total,diasEntre(i.fechaSaldo,diaISO(m.fecha))),
+              delta:esUSD(i)?m.delta/TRM():m.delta}))
+    .sort((a,b)=>a.d-b.d);
+  const base=+i.saldo||0;
+  let saldo=base, desde=0, movido=0;
+  for(const t of tramos){
+    saldo=capitaliza(saldo,i.tasaEA,t.d-desde)+t.delta;
+    movido+=t.delta; desde=t.d;
+  }
+  // el interés es lo que sobra del saldo corriente una vez descontado el capital
+  return capitaliza(saldo,i.tasaEA,total-desde)-base-movido;
 }
 // ---- posiciones en dólares ----
 // Se guardan en su moneda y una sola TRM las convierte a pesos para los totales.

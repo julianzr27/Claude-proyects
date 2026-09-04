@@ -60,6 +60,13 @@ movimientos [{ id, ts, fecha, tipo:"gasto"|"ingreso"|"pago_tarjeta"|"traslado",
   `saldo + interés + movimientos posteriores al ancla`. Un movimiento ya está
   dentro del saldo si su fecha es anterior al ancla **o** si se registró antes
   de confirmarlo (por eso cada movimiento guarda `ts`).
+- **El interés capitaliza sobre el saldo corriente, no sobre el ancla.** El
+  periodo se parte en tramos por cada movimiento y cada tramo capitaliza sobre
+  el saldo que había entonces, que es lo que hace el banco: una consignación
+  empieza a rendir el día que entra y un retiro deja de rendir el día que sale.
+  `movsDe` es la fuente única de esos movimientos; `movNeto` los suma y el
+  interés los usa para los tramos, y separarlas dejaría el saldo y su
+  rendimiento contando cosas distintas.
 - **Un gasto con tarjeta no toca ninguna cuenta.** La plata sale al pagar la
   tarjeta, y ahí se elige de qué cuenta.
 - **Los traslados no son gasto ni ingreso.** Mover plata entre cuentas propias
