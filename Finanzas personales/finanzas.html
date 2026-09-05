@@ -792,19 +792,21 @@ function vInv(){
      +'<div style="margin-top:10px"><button class="btn ghost sm" data-act="trm">Actualizar TRM</button></div></div>':"")
   +(fijas.length||!fInv?'<div class="sectionhead"><h2>Cuentas, efectivo y CDT'+(fInv?" · "+esc(fInv):"")+'</h2>'
    +'<button class="btn ghost sm" data-act="mover">Mover plata / retirar efectivo</button></div>'
-  +(fijas.length?tbl(["Nombre","Saldo base","Tasa E.A.","Interés ganado","Valor hoy","Peso",""],fijas.map(i=>{
+  +(fijas.length?tbl(["Nombre","Tasa E.A.","Interés ganado","Valor hoy","Peso",""],fijas.map(i=>{
       // en un CDT el capital está quieto: la estimación es exacta y no hay nada que confirmar
       const ganado=interesTotal(i), vHoy=valorHoy(i);
       const viejo=i.tipo==="cuenta"&&diasSinConfirmar(i)>=DESACTUALIZADA;
       const venc=valorAlVencimiento(i), dias=i.vencimiento?daysUntil(diaISO(i.vencimiento)):null;
       const fx=efectoDolar(i);
+      // El saldo anclado va en el detalle y no en columna propia: es un número
+      // viejo, y puesto junto al valor de hoy se leía como si fuera el actual.
+      // «Pagar tarjeta NU» mostraba 1.266.088 al lado de 398.958, que es lo real.
       const detalle=(i.nota?esc(i.nota)+". ":"")
-        +"Saldo del "+esc(i.fechaSaldo||"—")
+        +"Confirmado en "+fmtMon(+i.saldo||0,i)+" el "+esc(i.fechaSaldo||"—")
         +(venc!==null?" · vence "+esc(i.vencimiento)+(dias>0?" (en "+dias+" días, "+fmtMon(venc,i)+")":" (vencido)"):"")
         +(esUSD(i)?" · rendimiento "+fmt.format(gananciaActivoCOP(i))+" y el dólar "+(fx>=0?"sumó ":"restó ")+fmt.format(Math.abs(fx)):"");
       return [esc(i.nombre)+(viejo?' <span class="tag" style="color:var(--warn)">sin confirmar hace '+diasSinConfirmar(i)+'d</span>':"")
         +'<div class="hint">'+detalle+'</div>',
-       '<span class="num">'+fmtMon(i.saldo||0,i)+'</span>',
        '<span class="num">'+fmtTasa.format(+i.tasaEA||0)+'%</span>',
        '<span class="num val '+(ganado>=0?"pos":"neg")+'">'+fmtMon(ganado,i)+'</span>',
        '<span class="num">'+fmt.format(vHoy)+(esUSD(i)?'<div class="hint">'+fmtUSD.format(valorNativo(i))+'</div>':"")+'</span>',
@@ -812,7 +814,7 @@ function vInv(){
        '<button class="rowbtn" data-act="actsaldo" data-id="'+i.id+'">actualizar saldo</button>'
        +'<button class="rowbtn" data-act="editinv" data-id="'+i.id+'">editar</button>'
        +'<button class="rowbtn" data-act="delinv" data-id="'+i.id+'">✕</button>'];
-    }),[0,1,1,1,1,1,1])
+    }),[0,1,1,1,1,1])
    :'<div class="empty">Agrega tus cuentas de ahorro y CDT arriba, con su tasa E.A.</div>'):"")
 
   +(function(){
