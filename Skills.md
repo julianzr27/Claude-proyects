@@ -86,6 +86,14 @@
 - **Nota sobre hooks:** el instalador agrega hooks (`PostToolUse` en Edit/Write sobre archivos de UI y un `Stop` con revisión profunda) en el `.claude/settings.local.json` del **proyecto** donde se ejecuta, no a nivel global. Se corrió desde una carpeta temporal, así que no quedó ningún hook activo ni se tocó `~/.claude/settings.json`. Si se quieren en un proyecto: `npx impeccable install --providers=claude --project` desde ese proyecto (o `/impeccable init`).
 - **Se superpone con:** `frontend-design` (dirección estética de UI).
 
+### bpmn
+- **Ubicación:** `~/.claude/skills/bpmn/` (`SKILL.md`, `references/`, `scripts/bpmn-tool.mjs` + `lib.mjs`, `node_modules/`).
+- **Origen:** carpeta `skills/bpmn` de [architawr/claude-bpmn-skill](https://github.com/architawr/claude-bpmn-skill) (v1.3.0, MIT), copiada a mano. Revisada antes de instalar: los scripts solo leen y escriben el `.bpmn` que se les pasa (sin red, sin `child_process`, sin variables de entorno), las dos dependencias (`bpmn-moddle`, `bpmn-auto-layout`, ambas de bpmn.io) vienen de npmjs con hash de integridad y sin scripts de instalación, `npm audit` sin vulnerabilidades y el `SKILL.md` no trae instrucciones raras. Dependencias instaladas con `npm ci --ignore-scripts`; pasan 43/44 tests (el que falla busca la carpeta `evals/` del repo, que no se copió).
+- **Qué hace:** leer, explicar, crear y editar diagramas BPMN 2.0 (`.bpmn`): layout automático no destructivo, validación, lint de flujo (deadlocks, tokens atascados, nodos inalcanzables), `diff` entre versiones y `find`.
+- **Se activa con:** trabajar con un archivo `.bpmn` o pedir modelar un proceso como diagrama (Camunda, bpmn.io, etc.).
+- **Limitación detectada (probada con `produccion-cupcakes.bpmn`):** en una colaboración, `layout` ignora las lanes, no dibuja pools colapsados (caja negra) y descarta los flujos de mensaje que tocan ese pool, y aun así `validate` da VALID porque solo revisa los elementos del proceso. Workaround: hacer el layout del proceso solo (con lanes) y envolverlo después en la colaboración con un script propio.
+- **Nota:** no se instalaron los slash commands del plugin (`/bpmn:create`, `/bpmn:diff`, etc.), que son atajos a la misma skill. Si se quieren: `claude plugin marketplace add architawr/claude-bpmn-skill` y luego `claude plugin install bpmn@bpmn-tools`.
+
 ### voz-julian (combinada con humanizer)
 - **Ubicación:** `~/.claude/skills/voz-julian/SKILL.md`. Copia empaquetada en [voz-julian.skill](voz-julian.skill).
 - **Qué hace:** redacta en la voz de Julián (casual/semiformal, sin "tú", párrafos, conectores, "es decir") y después hace una pasada anti-IA con el plugin `humanizer`, usando el párrafo calibrado como muestra de voz. Trae reglas de precedencia para cuando chocan: los conectores y las construcciones impersonales se conservan, el contraste "no es solo X, sino Y" se permite una vez si ambas mitades aportan, y no se usan guiones largos.
