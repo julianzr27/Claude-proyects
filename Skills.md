@@ -102,6 +102,15 @@
 
 ## Plugins instalados vía `claude plugin` (alcance usuario, no project-scoped)
 
+### watch (claude-video)
+- **Origen:** plugin de [bradautomates/claude-video](https://github.com/bradautomates/claude-video) (v0.3.2), instalado con el método oficial para Claude Code: `claude plugin marketplace add bradautomates/claude-video` + `claude plugin install watch@claude-video --scope user`.
+- **Qué hace:** permite "ver" videos — de un archivo local o de una URL (YouTube, etc.) extrae fotogramas con marca de tiempo y la transcripción (subtítulos nativos primero), para resumir o responder preguntas sobre el contenido. Tiene dos motores: `gemini` (le pasa el video completo a Google; requiere `GEMINI_API_KEY`, gratis en Google AI Studio) y `local` (todo en la máquina con ffmpeg + yt-dlp, sin claves).
+- **Dependencias:** Python 3.10+ (hay 3.12), FFmpeg/ffprobe, yt-dlp (`winget install --id yt-dlp.yt-dlp --exact`, v2026.08.19) y Deno para YouTube (lo trajo winget junto con yt-dlp). El chequeo `setup.py --json` da `status: ready`, sin binarios faltantes.
+- **Se activa con:** "usa la skill watch en este video", "mira este video y resume", o una URL/archivo de video con una pregunta.
+- **Configuración pendiente:** la primera vez que se use corre un asistente que pregunta el nivel de detalle y el respaldo de transcripción (`none`, `whisperx` local ~3 GB, `groq` u `openai`). La configuración y las claves van en `~/.config/watch/.env`. Sin clave de Gemini usa el motor `local`.
+- **Hook instalado:** un `SessionStart` que solo corre `setup.py --check` y avisa si falta algo (revisado: no hace llamadas de red ni intercepta herramientas).
+- **Nota:** funciona en Claude Code (terminal, VS Code o pestaña Code de la app). No funciona en Chat ni en Cowork.
+
 ### humanizer
 - **Origen:** plugin de [blader/humanizer](https://github.com/blader/humanizer) (MIT, v3.1.0), instalado con el método oficial para Claude Code: `claude plugin marketplace add blader/humanizer` + `claude plugin install humanizer@humanizer --scope user`. Es solo un `SKILL.md`, sin hooks ni scripts que se ejecuten.
 - **Qué hace:** reescribe texto que suena a IA para que suene a persona, sin cambiar lo que dice. Revisa 26 patrones basados en la guía de Wikipedia "Signs of AI writing" (contrastes "no X sino Y", cierres de una línea, tríadas forzadas, guiones largos, vocabulario inflado, negritas decorativas, restos de chat).
